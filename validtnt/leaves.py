@@ -1,14 +1,16 @@
 """
 The leaves found on the parse tree.
 """
+from __future__ import annotations
 from enum import Enum
-from typing import Optional, Union
+from collections import OrderedDict
+from typing import Optional, Union, Set, get_type_hints
 
 __all__ = ['std', 'Quantifier', 'Logic', 'Operator', 'Rule',
            'PropositionalRule', 'TNTRule', 'FantasyRule', 'Rules',
            'Term', 'Numeral', 'Variable', 'MultiTerm', 'Formula',
            'Negated', 'Quantified', 'Compound', 'Statement',
-           'FantasyMarker']
+           'FantasyMarker', 'Fantasy', 'Text']
 
 # Symbols used
 
@@ -58,7 +60,7 @@ class PropositionalRule(Rule):
     SEPARATION = 'separation'
     DOUBLE_TILDE = 'double-tilde'
     FANTASY = 'fantasy rule'
-    CARRY_OVER = 'carry over line n'
+    CARRY_OVER = 'carry'
     DETACHMENT = 'detachment'
     CONTAPOSITIVE = 'contrapositive'
     DE_MORGAN = 'De Morgan'
@@ -80,10 +82,10 @@ class TNTRule(Rule):
     AXIOM3 = 'axiom 3'
     AXIOM4 = 'axiom 4'
     AXIOM5 = 'axiom 5'
+    PREMISE = 'premise'
 
 class FantasyRule(Rule):
     """Rules of fantasies."""
-    PREMISE = 'premise'
     PUSH = 'push'
     POP = 'pop'
 
@@ -93,13 +95,13 @@ def _dataclass(cls: type) -> type:
     """Decorator to add kwarg-only __init__"""
     def __init__(self, **kwargs):
         cls = type(self)
-        d = {}
-        for c in cls.__mro__[::-1]:
-            d.update(getattr(c, '__annotations__', {}))
-        d = {k: v for k, v in d.items() if v is not None}
+        d = get_type_hints(cls)
         for var, typ in d.items():
+            if typ in (None, type(None)):
+                continue
             if var not in kwargs and not hasattr(cls, var):
-                raise TypeError(f'__init__() missing required keyword argument: {var!r}')
+                raise TypeError('__init__() missing required '
+                                f'keyword argument: {var!r}')
             elif var not in kwargs:
                 kwargs[var] = getattr(cls, var)
             if getattr(typ, '__origin__', None) is Union:
@@ -107,7 +109,23 @@ def _dataclass(cls: type) -> type:
             if typ is not None and not isinstance(kwargs[var], typ):
                 raise TypeError(f'{var!r} is not {typ.__name__!r}: {kwargs[var]!r}')
             setattr(self, var, kwargs[var])
+    def __repr__(self):
+        ret = type(self).__name__
+        ret += '('
+        for k, v in self.__dict__.items():
+            ret += f'{k!s}={v!r}, '
+        if self.__dict__:
+            ret = ret[:-2]
+        ret += ')'
+        return ret
+    def __hash__(self):
+        return hash(str(self))
+    def __eq__(self, other):
+        return hash(self) == hash(other)
     cls.__init__ = __init__
+    cls.__repr__ = __repr__
+    cls.__hash__ = __hash__
+    cls.__eq__ = __eq__
     return cls
 
 # Begin actual TNT syntax
@@ -116,15 +134,23 @@ def _dataclass(cls: type) -> type:
 class Term:
     """
     All Numerals and Variables are terms.
-    A term preceded by ``S`` is also a term.
     """
-    successors: int = 0
+    def __init__(self):
+        raise TypeError('This class can only be extended.')
 
 class Numeral(Term):
     """
     0 is a numeral.
     """
-    pass
+    _instance = None
+    def __new__(cls):
+        """There is only one 0."""
+        if cls._instance is None:
+            cls._instance = Term.__new__(cls)
+        return cls._instance
+
+    def __str__(self):
+        return '0'
 
 class Variable(Term):
     """
@@ -132,14 +158,37 @@ class Variable(Term):
     If we're not being austere, so are ``b``, ``c``, ``d``, and ``e``.
     A variable followed by a prime (``′`` or ``'``) is also a variable.
     """
+    _instances = {}
+    def __new__(cls, *, letter, primes=0):
+        """Make each possible variable a singleton."""
+        if letter not in 'abcde':
+            raise ValueError('Only ``a``, ``b``, ``c``, ``d``, and ``e`` are variables.')
+        if (letter, primes) not in cls._instances:
+            cls._instances[letter, primes] = Term.__new__(cls)
+        return cls._instances[letter, primes]
     letter: str
     primes: int = 0
+    def __str__(self):
+        return self.letter + '′' * self.primes
+
+class Successed(Term):
+    """A term preceded by ``S`` is also a term."""
+    successors: int = 1
+    arg: Term
+    def __str__(self):
+        return 'S' * self.successors + str(self.arg)
 
 class MultiTerm(Term):
     """If ``s`` and ``t`` are terms, then so are ``(s+t)`` and ``(s⋅t)``."""
     arg1: Term
     arg2: Term
     operator: Operator
+    def __str__(self):
+        return '({}{}{})'.format(
+            str(self.arg1),
+            self.operator.value,
+            str(self.arg2),
+        )
 
 # The above rules tell how to make *parts* of well-formed formulas;
 # the following rules tell how to make *complete* well-formed formulas.
@@ -151,6 +200,8 @@ class Formula:
     """
     arg1: Term
     arg2: Term
+    def __str__(self):
+        return str(self.arg1) + '=' + str(self.arg2)
 
 class Negated(Formula):
     """
@@ -160,6 +211,8 @@ class Negated(Formula):
     arg: Formula
     arg1: None # de-registers arg1 as required arg
     arg2: None
+    def __str__(self):
+        return '~' * self.negations + str(self.arg)
 
 class Quantified(Formula):
     """
@@ -173,6 +226,12 @@ class Quantified(Formula):
     arg: Formula
     arg1: None
     arg2: None
+    def __str__(self):
+        return '{}{}:{}'.format(
+            self.quantifier.value,
+            str(self.variable),
+            str(self.arg),
+        )
 
 class Compound(Formula):
     """
@@ -184,6 +243,38 @@ class Compound(Formula):
     arg1: Formula
     arg2: Formula
     operator: Logic
+    def __str__(self):
+        return '<{}{}{}>'.format(
+            str(self.arg1),
+            self.operator.value,
+            str(self.arg2),
+        )
+
+class Wrapper(Formula):
+    """Wrapper class to store variable quantification information."""
+    arg1: None
+    arg2: None
+    arg: Formula
+    free: Set[Variable]
+
+    def __init__(self, *, arg):
+        """Find free variables and register them."""
+        #quantified = set()
+        #variables = set()
+        self.arg = arg
+
+    def __str__(self):
+        return str(self.arg)
+
+class FantasyMarker(Formula):
+    """Push or pop a fantasy."""
+    rule: FantasyRule
+    arg1: None
+    arg2: None
+    def __str__(self):
+        if self.rule is FantasyRule.PUSH:
+            return '['
+        return ']'
 
 # The above rules tell how to make complete formulas in TNT;
 # the following rules will tell how to make complete statements.
@@ -204,10 +295,83 @@ class Statement:
     Separated by spaces.
     """
     lineno: Optional[int] = None
-    formula: Formula
+    formula: Union[Wrapper, FantasyMarker]
     rule: Rule
     referrals: list = []
+    fantasy: Optional[Fantasy] = None #pylint: disable=used-before-assignment
+    def __str__(self):
+        result = ''
+        # line number
+        if self.lineno is not None:
+            result += str(self.lineno) + ' '
+        # indentation in fantasy
+        count = 0
+        fant = self.fantasy
+        while fant is not None:
+            count += 1
+            fant = fant.fantasy
+        result += '\t' * count
+        # formula
+        result += str(self.formula)
+        if isinstance(self.formula, FantasyMarker):
+            result += '\t'
+        # rule
+        refs = self.referrals
+        if self.rule is PropositionalRule.CARRY_OVER:
+            result += '\tcarry over line ' + str(self.referrals[0])
+            # the first referral is part of the rule for this one
+            refs = self.referrals[1:]
+        else:
+            result += '\t' + self.rule.value
+        # referrals
+        if refs:
+            result += ' (line ' + ', '.join(map(str, refs)) + ')'
+        return result
 
-class FantasyMarker(Formula):
-    """Push or pop a fantasy."""
-    rule: FantasyRule
+class Text(OrderedDict):
+    """Mapping of line numbers to TNT statements."""
+    vals: list = []
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.flash()
+    def flash(self):
+        """Store a list of items."""
+        self.vals = list(self.values())
+    def __str__(self):
+        return '\n'.join(map(str, self.values()))
+
+@_dataclass
+class Fantasy:
+    """
+    A fantasy is a way of manufacturing theorems from nothing.
+    A fantasy starts out with a premise P, which is a well-formed TNT string.
+    This premise is assumed to be a theorem within the fantasy.
+    Some derivation work is done from there,
+    and a final theorem Q is arrived at at the end of the fantasy.
+    Finally, <P⊃Q> is now truly a theorem, outside of the fantasy.
+    """
+    @property
+    def premise(self) -> Statement:
+        """The premise is the statement initially assumed to be true.
+        It is the first statement within a fantasy.
+        """
+        for stmt in self.content.values():
+            if stmt.rule == TNTRule.PREMISE:
+                return stmt
+        # if somehow no statement is explicitly marked as the premise,
+        # return the first statement in the fantasy
+        return list(self.content.values())[0]
+    @property
+    def outcome(self) -> Statement:
+        """The outcome is the statement ultimately derived from the premise.
+        It is what the premise implies, if it were true.
+        It is the last statement within a fantasy.
+        """
+        # always last statement, no special rule for it
+        return list(self.content.values())[-1]
+    content: Text
+    fantasy: Optional[Fantasy] = None # fantasy can be inside a fantasy
+    lineno: Optional[int] = None
+
+    def __str__(self):
+        return str(self.content)
