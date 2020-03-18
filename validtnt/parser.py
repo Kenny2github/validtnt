@@ -81,6 +81,9 @@ class TNTParser:
                 result[statement.lineno] = statement
                 if statement.rule is FantasyRule.PUSH:
                     content = fantasy.content
+            if fantasy is not None:
+                raise AssertionError('unclosed fantasy started on line '
+                                     + str(fantasy.lineno))
         except AssertionError as exc:
             raise ParsingFailed(exc.args[0], lineno, line) from None
         result.flash()
