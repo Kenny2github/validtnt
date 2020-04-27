@@ -54,7 +54,7 @@ class TNTRunner:
     """Validate TNT."""
 
     AXIOMS = parser.parse("""
-    [ No natural number is a successor of 0. ]
+    [ 0 is not the successor of any natural number. ]
     1 Aa:~Sa=0                axiom 1
 
     [ The sum of any natural number and 0 is the number. ]
@@ -154,8 +154,8 @@ class TNTRunner:
 
     def rule_invalid(self, idx: int, line: Statement) -> None:
         """How did you get here?"""
-        #TODO: this is commented out while not all rules are handled yet
-        #raise NotARule(f'No such rule: {line.rule.value!r}')
+        #TODO: this is a print while not all rules are handled yet
+        print(NotARule(f'No such rule: {line.rule.value!r}'))
 
     def rule_joining(self, idx: int, line: Statement) -> None:
         """Validate a joining."""
@@ -311,6 +311,12 @@ class TNTRunner:
             cond = self.find_arg(idx, line, lambda line, stmt: (
                 stmt.formula == expr.formula.arg.arg1
             ), 'detachment', 'condition to detach upon')
+
+    # BIG TODO:
+    # Implement some system of matching the x and y
+    # in the three rules marking strings as interchangeable
+    # because those strings can appear anywhere...
+    # Then apply it to all three rules with just a pattern.
 
     def rule_axiom_1(self, idx: int, line: Statement) -> None:
         """Validate a statement as axiom 1."""
