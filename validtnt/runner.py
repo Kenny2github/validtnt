@@ -2,9 +2,12 @@
 Validate TNT.
 """
 #pylint: skip-file
+import re
+from difflib import SequenceMatcher
 from typing import Union, Optional
 from .parser import TNTParser
-from .leaves import Text, Fantasy, Statement, Logic, Compound, FantasyMarker
+from .leaves import Text, Fantasy, Statement, Logic, Compound, FantasyMarker, \
+     Quantifier
 
 __all__ = ['TNTRunner']#, 'InvalidRule']
 
@@ -149,8 +152,11 @@ class TNTRunner:
             i -= 1
             if self.raise_fantasy(i, fantasy, rule, argname):
                 continue
-            if cmp(line, self.text.vals[i]):
-                return self.text.vals[i]
+            try:
+                if cmp(line, self.text.vals[i]):
+                    return self.text.vals[i]
+            except ProofMistake:
+                continue
 
     def rule_invalid(self, idx: int, line: Statement) -> None:
         """How did you get here?"""
@@ -158,7 +164,7 @@ class TNTRunner:
         print(NotARule(f'No such rule: {line.rule.value!r}'))
 
     def rule_joining(self, idx: int, line: Statement) -> None:
-        """Validate a joining."""
+        """If ``x`` and ``y`` are theorems, then ``<x∧y>`` is a theorem."""
         # first off it has to be an and
         if not isinstance(line.formula.arg, Compound) \
                or line.formula.arg.operator is not Logic.AND:
@@ -197,7 +203,7 @@ class TNTRunner:
                 arg2 = True
 
     def rule_separation(self, idx: int, line: Statement) -> None:
-        """Validate a separation."""
+        """If ``<x∧y>`` is a theorem, then both ``x`` and ``y`` are theorems."""
         arg = None
         self.at_most_refs(line, 1, 'separation')
         if len(line.referrals) == 1:
@@ -213,26 +219,29 @@ class TNTRunner:
                                      stmt.formula.arg.arg2)
             ), 'separation', 'joined formula')
 
-    def double_tilde(self, idx: int, line: Statement) -> None:
-        """Validate the double-tilde rule."""
+    def rule_double_tilde(self, idx: int, line: Statement) -> None:
+        """The string ``~~`` can be deleted from any theorem.
+        It can also be inserted into any theorem,
+        provided that the resulting string is itself well-formed.
+        """
         self.at_most_refs(line, 1, 'double-tilde')
+        def referral_matches(line: Statement, arg: Statement) -> bool:
+            return str(line.formula).replace('~~', '') \
+                   == str(arg.formula).replace('~~', '')
         if len(line.referrals) == 1:
             arg = self.text[line.referrals[0]]
-            if str(line.formula).replace('~~', '') \
-                   != str(arg.formula).replace('~~', ''):
+            if not referral_matches(line, arg):
                 raise InvalidReferral('change in formula does not only '
                                       'consist of adding or removing '
                                       'double-tildes')
         else:
-            self.find_arg(idx, line, lambda line, stmt: (
-                # if they are the same with all double-tildes removed,
-                # then it follows the rule
-                str(line.formula).replace('~~', '')
-                == str(stmt.formula).replace('~~', '')
-            ), 'double-tilde', 'previous well-formed string')
+            self.find_arg(idx, line, referral_matches, 'double-tilde',
+                          'previous well-formed string')
 
     def rule_fantasy_rule(self, idx: int, line: Statement) -> None:
-        """Validate the fantasy rule."""
+        """If ``y`` can be derived when ``x`` is assumed to be a theorem,
+        then ``<x⊃y>`` is a theorem.
+        """
         self.at_most_refs(line, 0, 'fantasy rule')
         i = idx
         arg = None
@@ -260,7 +269,9 @@ class TNTRunner:
                                  'result of IMPLIES formula')
 
     def rule_carry(self, idx: int, line: Statement) -> None:
-        """Validate the carry rule."""
+        """Inside a fantasy, any theorem from the "reality" one level higher
+        can be brought in and used.
+        """
         self.at_most_refs(line, 1, 'carry')
         # the parser is guaranteed to provide the single referral,
         # because the rule syntax requires it
@@ -273,7 +284,7 @@ class TNTRunner:
                                   'formula being carried')
 
     def rule_detachment(self, idx: int, line: Statement) -> None:
-        """Validate a detachment."""
+        """If ``x`` and ``<x⊃y>`` are both theorems, then ``y`` is a theorem."""
         cond = expr = None
         formula = line.formula.arg
         self.at_most_refs(line, 2, 'detachment')
@@ -317,6 +328,168 @@ class TNTRunner:
     # in the three rules marking strings as interchangeable
     # because those strings can appear anywhere...
     # Then apply it to all three rules with just a pattern.
+
+    def rule_specification(self, idx: int, line: Statement) -> None:
+        """Suppose ``u`` is a variable which occurs inside the string ``x``.
+        If the string ``∀u:x`` is a theorem, then so is ``x``, and so are any
+        strings made from ``x`` by replacing ``u``, wherever it occurs, by one
+        and the same term.
+        (Restriction: The term which replaces ``u`` must not contain any
+        variable that is quantified in ``x``.)
+        """
+        self.at_most_refs(line, 1, 'specification')
+        def referral_matches(line: Statement, arg: Statement) -> bool:
+            # find variables quantified in arg but not in line
+            spec = set(arg.formula.quantified) - set(line.formula.quantified)
+            if len(spec) != 1:
+                raise InvalidReferral('cannot specify multiple variables '
+                                      'simultaneously')
+            spec = spec.pop()
+            if arg.formula.quantified[spec] != Quantified.ALL:
+                raise InvalidReferral('cannot specify existence quantifier')
+            prev = str(arg.formula)
+            after = str(line.formula)
+            var = str(spec)
+            # replace original var with invalid one to prevent SM from
+            # breaking up the replacement with an "equal" operation
+            # make sure the character counts match, though
+            sm = SequenceMatcher(None, prev, after.replace(var, 'q' * len(var)))
+            possibilities = set()
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag == 'delete':
+                    if i2 - i1 != len(var) + 2: # quantifiers are always 'Ax:'
+                        raise InvalidReferral('non-quantifier deleted')
+                    deleted = prev[i1:i2]
+                    if deleted[0] != Quantifier.ALL.value:
+                        raise InvalidReferral('invalid quantifier deleted')
+                    if deleted[1:-1] != var:
+                        raise InvalidReferral('quantifier for wrong '
+                                              'variable deleted')
+                    if deleted[-1] != ':':
+                        raise InvalidReferral('how did you do this?')
+                    prev = prev.replace(deleted, '', 1)
+                if tag == 'replace':
+                    repl = after[j1:j2]
+                    # it might be a match if (a+b).replace(a, b) == (b+b)
+                    if prev.replace(var, repl) == after:
+                        possibilities.add(repl)
+            if prev == after and not possibilities: # after deletion(s)
+                return True
+            # ambiguity is treated as failure
+            if len(possibilities) != 1:
+                raise InvalidReferral('ambiguous specification')
+            repl = possibilities.pop()
+            for var in line.formula.quantified:
+                if str(var) in repl:
+                    raise SpecifyingQuantifiedVariable(
+                        'the term which replaces the specified variable '
+                        'must not contain any variable that is quantified '
+                        'in the resulting string'
+                    )
+            return True
+        if len(line.referrals) == 1:
+            arg = self.text[line.referrals[0]]
+            if not referral_matches(line, arg):
+                raise InvalidReferral('invalid specification')
+        else:
+            self.find_arg(idx, line, referral_matches, 'specification',
+                          'previous general statement')
+
+    def rule_generalization(self, idx: int, line: Statement) -> None:
+        """Suppose ``x`` is a theorem in which ``u``, a variable, occurs free.
+        Then ``∀u:x` is a theorem.
+        (Restriction: No generalization is allowed in a fantasy on any variable
+        which appeared free in the fantasy's premise.)
+        """
+        self.at_most_refs(line, 1, 'generalization')
+        def referral_matches(line: Statement, arg: Statement) -> bool:
+            # find variables quantified in line but not in arg
+            gen = set(line.formula.quantified) - set(arg.formula.quantified)
+            if len(gen) != 1:
+                raise InvalidReferral('cannot generalize multiple variables '
+                                      'simultaneously')
+            gen = gen.pop()
+            if line.formula.quantified[gen] != Quantified.ALL:
+                raise InvalidReferral('cannot generalize existence quantifier')
+            prev = str(arg.formula)
+            after = str(line.formula)
+            var = str(gen)
+            if var not in prev or var not in after:
+                raise InvalidReferral('quantifying nonexistent variable')
+            sm = SequenceMatcher(None, prev, after.replace(var, 'q' * len(var)))
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag == 'insert':
+                    if i2 - i1 != len(var) + 2: # quantifiers are always 'Ax:'
+                        raise InvalidReferral('non-quantifier inserted')
+                    inserted = after[j1:j2]
+                    if inserted[0] != Quantifier.ALL.value:
+                        raise InvalidReferral('invalid quantifier inserted')
+                    if inserted[1:-1] != var:
+                        raise InvalidReferral('quantifier for wrong '
+                                              'variable inserted')
+                    if inserted[-1] != ':':
+                        raise InvalidReferral('how did you do this?')
+                    if line.fantasy is not None:
+                        premise = line.fantasy.premise
+                        if gen in premise.formula.free:
+                            raise GeneralizingFantasyVariable(
+                                'no generalization is allowed in a fantasy on '
+                                'any variable which appeared free in the '
+                                'premise of the fantasy'
+                            )
+                    # generalization consists of a single insertion, so
+                    # if all checks are passed then this is the one.
+                    return True
+            # if no insertions were made, no generalization was either
+            return False
+        if len(line.referrals) == 1:
+            arg = self.text[line.referrals[0]]
+            if not referral_matches(line, arg):
+                raise InvalidReferral('invalid generalization')
+        else:
+            self.find_arg(idx, line, referral_matches, 'generalization',
+                          'previous statement with free variables')
+
+    def rule_interchange(self, idx: int, line: Statement) -> None:
+        """Suppose ``u`` is a variable. Then the strings ``∀u:~`` and ``~∃u:``
+        are interchangeable anywhere inside any theorem.
+        """
+        self.at_most_refs(line, 1, 'interchange')
+        def referral_matches(line: Statement, arg: Statement) -> bool:
+            # replace all quantifiers with the same dummy invalid quantifier
+            # for the sake of comparison
+            return re.sub(
+                '∀([a-e]′*):~|~∃([a-e]′*):',
+                r'Q\1\2:', str(line.formula)
+            ) == re.sub(
+                '∀([a-e]′*):~|~∃([a-e]′*):',
+                r'Q\1\2:', str(arg.formula)
+            )
+        if len(line.referrals) == 1:
+            arg = self.text[line.referrals[0]]
+            if not referral_matches(line, arg):
+                raise InvalidReferral('invalid interchange')
+        else:
+            self.find_arg(idx, line, referral_matches, 'interchange',
+                          'valid interchange source')
+
+    def rule_existence(self, idx: int, line: Statement) -> None:
+        """Suppose a term (which may contain variables as long as they are free)
+        appears once, or multiply, in a theorem. Then any (or several, or all)
+        of the appearances of the term may be replaced by a variable which
+        otherwise does not occur in the theorem, and the corresponding
+        existential quantifier must be placed in front.
+        """
+        self.at_most_refs(line, 1, 'existence')
+        def referral_matches(line: Statement, arg: Statement) -> bool:
+            # find variables quantified in line but not in arg
+            # this is very similar to specification and generalization,
+            # but has elements of both and neither
+            exist = set(line.formula.quantified) - set(arg.formula.quantified)
+            if len(exist) != 1:
+                raise InvalidReferral('cannot assert existence of multiple '
+                                      'variables simultaneously')
+            # TODO: implement this
 
     def rule_axiom_1(self, idx: int, line: Statement) -> None:
         """Validate a statement as axiom 1."""

@@ -158,7 +158,9 @@ class TNTParser:
         if text[start] in QUANTIFIERS: # Aa:<...>
             quant = Quantifier(std(text[start]))
             start, var = self.variable(start+1, text)
-            end, fmla = self.formula(start+1, text)
+            assert text[start] == ':', \
+                   f'column {start}: invalid syntax, missing colon'
+            end, fmla = self.formula(start+1, text) # skip the colon
             fmla = Quantified(arg=fmla, variable=var, quantifier=quant)
             return end, fmla
         if text[start] == '<': # <...X...>

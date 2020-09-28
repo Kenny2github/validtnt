@@ -162,7 +162,8 @@ class Variable(Term):
     def __new__(cls, *, letter, primes=0):
         """Make each possible variable a singleton."""
         if letter not in 'abcde':
-            raise ValueError('Only ``a``, ``b``, ``c``, ``d``, and ``e`` are variables.')
+            raise ValueError('Only ``a``, ``b``, ``c``, ``d``, and ``e`` '
+                             'are valid variable letters.')
         if (letter, primes) not in cls._instances:
             cls._instances[letter, primes] = Term.__new__(cls)
         return cls._instances[letter, primes]
@@ -250,18 +251,32 @@ class Compound(Formula):
             str(self.arg2),
         )
 
+def recurse_vars(formula, quant, free):
+    if hasattr(formula, 'arg'):
+        if isinstance(formula, Quantified):
+            quant[formula.variable] = formula.quantifier
+        recurse_vars(formula.arg, quant, free)
+    elif hasattr(formula, 'arg1'):
+        recurse_vars(formula.arg1, quant, free)
+        recurse_vars(formula.arg2, quant, free)
+    elif isinstance(formula, Variable):
+        if formula not in quant:
+            free.add(formula)
+
 class Wrapper(Formula):
     """Wrapper class to store variable quantification information."""
     arg1: None
     arg2: None
     arg: Formula
     free: Set[Variable]
+    quantified: dict # Variable: Quantifier
 
     def __init__(self, *, arg):
         """Find free variables and register them."""
-        #quantified = set()
-        #variables = set()
+        self.free = set()
+        self.quantified = {}
         self.arg = arg
+        recurse_vars(self.arg, self.quantified, self.free)
 
     def __str__(self):
         return str(self.arg)
