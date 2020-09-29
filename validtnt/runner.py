@@ -165,12 +165,17 @@ class TNTRunner:
         #TODO: this is a print while not all rules are handled yet
         print(NotARule(f'No such rule: {line.rule.value!r}'))
 
+    # TODO: get rid of the searching for valid source
+    # either explicitly refer far back or refer only to directly previous
+    # statements. Two-argument rules still need to figure out which is which,
+    # though, because setting that would really be arbitrary.
+
     def rule_joining(self, idx: int, line: Statement) -> None:
         """If ``x`` and ``y`` are theorems, then ``<x∧y>`` is a theorem."""
         # first off it has to be an and
         if not isinstance(line.formula.arg, Compound) \
                or line.formula.arg.operator is not Logic.AND:
-            raise InvalidRule('formula is not an AND formula')
+            raise InvalidRule('joining formula is not an AND formula')
         arg1 = arg2 = False
         formula = line.formula.arg
         self.at_most_refs(line, 2, 'joining')
