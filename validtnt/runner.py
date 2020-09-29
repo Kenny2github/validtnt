@@ -51,12 +51,12 @@ class InvalidFantasy(ProofMistake):
     """Incorrect use of fantasies."""
     pass
 
-parser = TNTParser()
+TERM = re.compile('^[a-e\N{PRIME}S0()+\N{DOT OPERATOR}]+$')
 
 class TNTRunner:
     """Validate TNT."""
 
-    AXIOMS = parser.parse("""
+    AXIOMS = TNTParser().parse("""
     [ 0 is not the successor of any natural number. ]
     1 Aa:~Sa=0                axiom 1
 
@@ -83,7 +83,7 @@ class TNTRunner:
         out of the parser.)
         """
         if isinstance(text, str):
-            text = parser.parse(text)
+            text = TNTParser().parse(text)
         if text is not None:
             self.text = text
 
@@ -148,7 +148,7 @@ class TNTRunner:
         """
         i = idx
         fantasy = line.fantasy
-        while 1:
+        while i > 0:
             i -= 1
             if self.raise_fantasy(i, fantasy, rule, argname):
                 continue
@@ -157,6 +157,8 @@ class TNTRunner:
                     return self.text.vals[i]
             except ProofMistake:
                 continue
+        if i <= 0:
+            raise MissingArgument(rule + ' missing corresponding ' + argname)
 
     def rule_invalid(self, idx: int, line: Statement) -> None:
         """How did you get here?"""
@@ -345,7 +347,7 @@ class TNTRunner:
                 raise InvalidReferral('cannot specify multiple variables '
                                       'simultaneously')
             spec = spec.pop()
-            if arg.formula.quantified[spec] != Quantified.ALL:
+            if arg.formula.quantified[spec] != Quantifier.ALL:
                 raise InvalidReferral('cannot specify existence quantifier')
             prev = str(arg.formula)
             after = str(line.formula)
@@ -366,10 +368,13 @@ class TNTRunner:
                         raise InvalidReferral('quantifier for wrong '
                                               'variable deleted')
                     if deleted[-1] != ':':
-                        raise InvalidReferral('how did you do this?')
+                        raise RuntimeError('how did you do this?')
                     prev = prev.replace(deleted, '', 1)
                 if tag == 'replace':
                     repl = after[j1:j2]
+                    if not TERM.search(repl):
+                        raise InvalidReferral('specifying variable with '
+                                              'something other than a term')
                     # it might be a match if (a+b).replace(a, b) == (b+b)
                     if prev.replace(var, repl) == after:
                         possibilities.add(repl)
@@ -409,7 +414,7 @@ class TNTRunner:
                 raise InvalidReferral('cannot generalize multiple variables '
                                       'simultaneously')
             gen = gen.pop()
-            if line.formula.quantified[gen] != Quantified.ALL:
+            if line.formula.quantified[gen] != Quantifier.ALL:
                 raise InvalidReferral('cannot generalize existence quantifier')
             prev = str(arg.formula)
             after = str(line.formula)
@@ -419,7 +424,10 @@ class TNTRunner:
             sm = SequenceMatcher(None, prev, after.replace(var, 'q' * len(var)))
             for tag, i1, i2, j1, j2 in sm.get_opcodes():
                 if tag == 'insert':
-                    if i2 - i1 != len(var) + 2: # quantifiers are always 'Ax:'
+                    if j1 != 0:
+                        raise InvalidReferral('quantifier must be inserted '
+                                              'at front of theorem')
+                    if j2 != len(var) + 2: # quantifiers are always 'Ax:'
                         raise InvalidReferral('non-quantifier inserted')
                     inserted = after[j1:j2]
                     if inserted[0] != Quantifier.ALL.value:
@@ -428,7 +436,7 @@ class TNTRunner:
                         raise InvalidReferral('quantifier for wrong '
                                               'variable inserted')
                     if inserted[-1] != ':':
-                        raise InvalidReferral('how did you do this?')
+                        raise RuntimeError('how did you do this?')
                     if line.fantasy is not None:
                         premise = line.fantasy.premise
                         if gen in premise.formula.free:
@@ -452,19 +460,20 @@ class TNTRunner:
 
     def rule_interchange(self, idx: int, line: Statement) -> None:
         """Suppose ``u`` is a variable. Then the strings ``∀u:~`` and ``~∃u:``
-        are interchangeable anywhere inside any theorem.
+        are interchangeable anywhere inside any theorem provided they are not
+        preceded themselves by a ``~``.
         """
         self.at_most_refs(line, 1, 'interchange')
         def referral_matches(line: Statement, arg: Statement) -> bool:
             # replace all quantifiers with the same dummy invalid quantifier
             # for the sake of comparison
-            return re.sub(
-                '∀([a-e]′*):~|~∃([a-e]′*):',
-                r'Q\1\2:', str(line.formula)
-            ) == re.sub(
-                '∀([a-e]′*):~|~∃([a-e]′*):',
-                r'Q\1\2:', str(arg.formula)
-            )
+            interchange_quantifiers = re.compile('(?<!~)(?:\N{FOR ALL}\
+([a-e]\N{PRIME}*):~|~\N{THERE EXISTS}([a-e]\N{PRIME}*):)')
+            a = re.sub(interchange_quantifiers,
+                       r'Q\1\2:', str(line.formula))
+            b = re.sub(interchange_quantifiers,
+                       r'Q\1\2:', str(arg.formula))
+            return a == b
         if len(line.referrals) == 1:
             arg = self.text[line.referrals[0]]
             if not referral_matches(line, arg):
@@ -489,40 +498,105 @@ class TNTRunner:
             if len(exist) != 1:
                 raise InvalidReferral('cannot assert existence of multiple '
                                       'variables simultaneously')
-            # TODO: implement this
+            exist = exist.pop()
+            if line.formula.quantified[exist] != Quantifier.EXISTS:
+                raise InvalidReferral('cannot assert existence with '
+                                      'general quantifier')
+            prev = str(arg.formula)
+            after = str(line.formula)
+            var = str(exist)
+            # no need to replace with an invalid variable this time,
+            # because the variable that replaces the string must
+            # not already exist in the theorem
+            sm = SequenceMatcher(None, prev, after)
+            possibilities = set()
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag == 'insert':
+                    if j1 != 0:
+                        raise InvalidReferral('quantifier must be inserted '
+                                              'at front of theorem')
+                    if j2 != len(var) + 2: # quantifiers are always 'Ex:'
+                        raise InvalidReferral('non-quantifier inserted')
+                    inserted = after[j1:j2]
+                    if inserted[0] != Quantifier.EXISTS.value:
+                        raise InvalidReferral('invalid quantifier inserted')
+                    if inserted[1:-1] != var:
+                        raise InvalidReferral('quantifier for wrong '
+                                              'variable inserted')
+                    if inserted[-1] != ':':
+                        raise RuntimeError('how did you do this?')
+                if tag == 'replace':
+                    repled = prev[i1:i2]
+                    if after[j1:j2] != var:
+                        raise InvalidReferral('a term replaced by a term '
+                                              'other than the new variable')
+                    if not TERM.search(repled):
+                        raise InvalidReferral('only terms can be replaced')
+                    for q in arg.formula.quantified:
+                        if str(q) in repled:
+                            raise InvalidReferral('the term being replaced '
+                                                  'must not contain a '
+                                                  'quantified variable')
+                    # it might be a match if (a+b).replace(b, a) == (a+a)
+                    restored = re.sub('(?<!{0}){1}|{1}(?!:)'.format(
+                        Quantifier.EXISTS.value, var
+                    ), repled, after).replace(Quantifier.EXISTS.value
+                                              + var + ':', '')
+                    if restored == prev:
+                        possibilities.add(repled)
+                    else:
+                        print(prev, after, repled, restored)
+            # existence requires that the same string was replaced,
+            # but more than one possibility means more than one unique string
+            # was replaced. Fail. (This could be bad parsing, but we'll cross
+            # that bridge when we get there.)
+            # Note to self 2020-09-29T09:56:30Z+0800: we've gotten there.
+            # Aa:Eb: -> :Eb inserted
+            if len(possibilities) != 1:
+                raise InvalidReferral('existence on more than one string')
+            return True
+        if len(line.referrals) == 1:
+            arg = self.text[line.referrals[0]]
+            if not referral_matches(line, arg):
+                raise InvalidReferral('invalid existence')
+        else:
+            self.find_arg(idx, line, referral_matches, 'existence',
+                          'previous well-formed string')
 
     def rule_axiom_1(self, idx: int, line: Statement) -> None:
-        """Validate a statement as axiom 1."""
+        """0 is not the successor of any natural number."""
         self.at_most_refs(line, 0, 'axiom 1')
         if line.formula != self.AXIOMS[1].formula:
             raise InvalidRule('not axiom 1')
 
     def rule_axiom_2(self, idx: int, line: Statement) -> None:
-        """Validate a statement as axiom 2."""
+        """The sum of any natural number and 0 is the number."""
         self.at_most_refs(line, 0, 'axiom 2')
         if line.formula != self.AXIOMS[2].formula:
             raise InvalidRule('not axiom 2')
 
     def rule_axiom_3(self, idx: int, line: Statement) -> None:
-        """Validate a statement as axiom 3."""
+        """S can be slipped in and out of parentheses."""
         self.at_most_refs(line, 0, 'axiom 3')
         if line.formula != self.AXIOMS[3].formula:
             raise InvalidRule('not axiom 3')
 
     def rule_axiom_4(self, idx: int, line: Statement) -> None:
-        """Validate a statement as axiom 4."""
+        """Any natural number multiplied by 0 is 0."""
         self.at_most_refs(line, 0, 'axiom 4')
         if line.formula != self.AXIOMS[4].formula:
             raise InvalidRule('not axiom 4')
 
     def rule_axiom_5(self, idx: int, line: Statement) -> None:
-        """Validate a statement as axiom 5."""
+        """A natural number multiplied by the successor of another natural
+        number is the two numbers multipled plus the first number.
+        """
         self.at_most_refs(line, 0, 'axiom 5')
         if line.formula != self.AXIOMS[5].formula:
             raise InvalidRule('not axiom 5')
 
     def rule_push(self, idx: int, line: Statement) -> None:
-        """Validate the ``push`` fantasy rule."""
+        """Create a fantasy."""
         self.at_most_refs(line, 0, 'push')
         if not isinstance(line.formula.arg, FantasyMarker):
             raise InvalidRule('cannot use push on actual formula')
@@ -530,9 +604,16 @@ class TNTRunner:
             raise InvalidRule('push rule used on pop statement')
 
     def rule_pop(self, idx: int, line: Statement) -> None:
-        """Validate the ``pop`` fantasy rule."""
+        """Leave a fantasy."""
         self.at_most_refs(line, 0, 'pop')
         if not isinstance(line.formula.arg, FantasyMarker):
             raise InvalidRule('cannot use pop on actual formula')
         if line.formula.arg.rule != line.rule:
             raise InvalidRule('pop rule used on push statement')
+
+    def rule_premise(self, idx: int, line: Statement) -> None:
+        """The first statement in a fantasy is assumed true as the premise."""
+        self.at_most_refs(line, 0, 'premise')
+        if line.fantasy.premise is not line:
+            raise InvalidRule('this line is not the premise, this one is: '
+                              + str(line.fantasy.premise))
