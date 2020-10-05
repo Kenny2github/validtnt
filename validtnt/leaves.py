@@ -14,7 +14,7 @@ __all__ = ['std', 'Quantifier', 'Logic', 'Operator', 'Rule',
 
 # Symbols used
 
-def std(symbol):
+def std(symbol: str) -> str:
     """Normalize an alternate symbol to the standard one."""
     return {
         "'": '′',
@@ -52,7 +52,6 @@ class Operator(Enum):
 
 class Rule(Enum):
     """Rules of the system."""
-    pass
 
 class PropositionalRule(Rule):
     """Rules of Propositional Calculus."""
@@ -251,14 +250,15 @@ class Compound(Formula):
             str(self.arg2),
         )
 
-def recurse_vars(formula, quant, free):
+def _recurse_vars(formula, quant, free):
+    """Compute which variables are quantified by recursing into each argument."""
     if hasattr(formula, 'arg'):
         if isinstance(formula, Quantified):
             quant[formula.variable] = formula.quantifier
-        recurse_vars(formula.arg, quant, free)
+        _recurse_vars(formula.arg, quant, free)
     elif hasattr(formula, 'arg1'):
-        recurse_vars(formula.arg1, quant, free)
-        recurse_vars(formula.arg2, quant, free)
+        _recurse_vars(formula.arg1, quant, free)
+        _recurse_vars(formula.arg2, quant, free)
     elif isinstance(formula, Variable):
         if formula not in quant:
             free.add(formula)
@@ -276,7 +276,7 @@ class Wrapper(Formula):
         self.free = set()
         self.quantified = {}
         self.arg = arg
-        recurse_vars(self.arg, self.quantified, self.free)
+        _recurse_vars(self.arg, self.quantified, self.free)
 
     def __str__(self):
         return str(self.arg)
