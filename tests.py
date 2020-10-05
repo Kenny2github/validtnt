@@ -9,25 +9,22 @@ class TestLeaves(unittest.TestCase):
     def test_std(self):
         """Ensure that std() normalizes correctly"""
         self.assertEqual(std('*'), std('.'), "product symbols don't match")
-        self.assertEqual(std('&'), validtnt.Logic.AND, "wrong and symbol")
+        self.assertEqual(std('&'), validtnt.Logic.AND.value, "wrong and symbol")
         self.assertEqual(std('&'), std('^'), "and symbols don't match")
-        self.assertEqual(std('|'), validtnt.Logic.OR, "wrong or symbol")
+        self.assertEqual(std('|'), validtnt.Logic.OR.value, "wrong or symbol")
         self.assertEqual(std('|'), std('V'), "or symbols don't match")
         self.assertEqual(std('V'), std('v'), "or symbols don't match")
         self.assertEqual(std('|'), std('v'), "or symbols don't match")
-        self.assertEqual(std(']'), validtnt.Logic.IMPLIES,
+        self.assertEqual(std(']'), validtnt.Logic.IMPLIES.value,
                          "wrong implies symbol")
         self.assertEqual(std('→'), std(']'), "implies symbols don't match")
-        self.assertEqual(std('A'), validtnt.Quantifier.ALL,
+        self.assertEqual(std('A'), validtnt.Quantifier.ALL.value,
                          "wrong for-all symbol")
-        self.assertEqual(std('E'), validtnt.Quantifier.EXISTS,
+        self.assertEqual(std('E'), validtnt.Quantifier.EXISTS.value,
                          "wrong exists symbol")
 
     def test_terms(self):
         """Test Term and its subclasses"""
-        with self.assertRaises(TypeError, msg="Term shouldn't be inheritable"):
-            validtnt.Term()
-
         zero = validtnt.Numeral()
         self.assertIsInstance(zero, validtnt.Term, "all numerals are terms")
         self.assertEqual(str(zero), '0', "numeral should be zero")
@@ -46,7 +43,7 @@ class TestLeaves(unittest.TestCase):
                       "each possible variable should be a singleton")
         aprime = validtnt.Variable(letter='a', primes=2)
         self.assertIsInstance(aprime, validtnt.Term, "all variables are terms")
-        self.assertEqual(str(a), 'a\N{PRIME}\N{PRIME}', "missing primes")
+        self.assertEqual(str(aprime), 'a\N{PRIME}\N{PRIME}', "missing primes")
         self.assertIs(aprime, validtnt.Variable(letter='a', primes=2),
                       "each possible variable should be a singleton")
 
@@ -122,7 +119,7 @@ class TestLeaves(unittest.TestCase):
         self.assertEqual(str(wrapped), str(notandall), "wrapper shouldn't add")
         self.assertIs(wrapped.quantified.get(a, None), validtnt.Quantifier.ALL,
                       "variable a should be quantified ALL")
-        self.assertIs(list(wrapped.free)[0], b, "variable b should be free")
+        self.assertIn(b, wrapped.free, "variable b should be free")
 
         with self.assertRaises(TypeError, msg="rule should be FantasyRule only"):
             validtnt.FantasyMarker(rule='push')
@@ -135,11 +132,12 @@ class TestLeaves(unittest.TestCase):
         """Test the Statement class"""
         formula = validtnt.Formula(arg1=validtnt.Variable(letter='a'),
                                    arg2=validtnt.Variable(letter='b'))
+        formula = validtnt.Wrapper(arg=formula)
         with self.assertRaises(TypeError, msg="lineno should be int? only"):
             validtnt.Statement(lineno='0', formula=formula,
                                rule=validtnt.PropositionalRule.DETACHMENT)
         with self.assertRaises(TypeError, msg="formula should be Formula only"):
-            validtnt.Statement(formula=formula.arg1, rule=validtnt.TNTRule.ADD_S)
+            validtnt.Statement(formula=formula.arg.arg1, rule=validtnt.TNTRule.ADD_S)
         with self.assertRaises(TypeError, msg="rule should be Rule only"):
             validtnt.Statement(formula=formula, rule='add S')
         with self.assertRaises(TypeError, msg="referrals should be a list"):
@@ -161,8 +159,10 @@ class TestLeaves(unittest.TestCase):
         a = validtnt.Variable(letter='a')
         b = validtnt.Variable(letter='b')
         premise = validtnt.Formula(arg1=a, arg2=b)
+        premise = validtnt.Wrapper(arg=premise)
         premise = validtnt.Statement(formula=premise, rule=validtnt.TNTRule.PREMISE)
         outcome = validtnt.Formula(arg1=b, arg2=a)
+        outcome = validtnt.Wrapper(arg=outcome)
         outcome = validtnt.Statement(formula=outcome, rule=validtnt.TNTRule.SYMMETRY)
         text = validtnt.Text([(1, premise), (2, outcome)])
         fantasy = validtnt.Fantasy(content=text)

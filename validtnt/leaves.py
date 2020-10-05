@@ -8,8 +8,8 @@ from typing import Optional, Union, Set, get_type_hints
 
 __all__ = ['std', 'Quantifier', 'Logic', 'Operator', 'Rule',
            'PropositionalRule', 'TNTRule', 'FantasyRule', 'Rules',
-           'Term', 'Numeral', 'Variable', 'MultiTerm', 'Formula',
-           'Negated', 'Quantified', 'Compound', 'Statement',
+           'Term', 'Numeral', 'Variable', 'Successed', 'MultiTerm', 'Formula',
+           'Negated', 'Quantified', 'Compound', 'Wrapper', 'Statement',
            'FantasyMarker', 'Fantasy', 'Text']
 
 # Symbols used
@@ -106,7 +106,11 @@ def _dataclass(cls: type) -> type:
             if getattr(typ, '__origin__', None) is Union:
                 typ = typ.__args__
             if typ is not None and not isinstance(kwargs[var], typ):
-                raise TypeError(f'{var!r} is not {typ.__name__!r}: {kwargs[var]!r}')
+                if isinstance(typ, tuple):
+                    name = ' or '.join(repr(t.__name__) for t in typ)
+                else:
+                    name = repr(typ.__name__)
+                raise TypeError(f'{var!r} is not {name!s}: {kwargs[var]!r}')
             setattr(self, var, kwargs[var])
     def __repr__(self):
         ret = type(self).__name__
@@ -134,8 +138,6 @@ class Term:
     """
     All Numerals and Variables are terms.
     """
-    def __init__(self):
-        raise TypeError('This class can only be extended.')
 
 class Numeral(Term):
     """
@@ -207,7 +209,7 @@ class Negated(Formula):
     """
     A well-formed formula preceded by a tilde is well-formed.
     """
-    negations: int = 0
+    negations: int = 1
     arg: Formula
     arg1: None # de-registers arg1 as required arg
     arg2: None
@@ -250,7 +252,7 @@ class Compound(Formula):
             str(self.arg2),
         )
 
-def _recurse_vars(formula, quant, free):
+def _recurse_vars(formula: Formula, quant: dict, free: set) -> None:
     """Compute which variables are quantified by recursing into each argument."""
     if hasattr(formula, 'arg'):
         if isinstance(formula, Quantified):
@@ -271,8 +273,10 @@ class Wrapper(Formula):
     free: Set[Variable]
     quantified: dict # Variable: Quantifier
 
-    def __init__(self, *, arg):
+    def __init__(self, *, arg: Formula):
         """Find free variables and register them."""
+        if not isinstance(arg, Formula):
+            raise TypeError(f"'arg' is not 'Formula': {arg!r}")
         self.free = set()
         self.quantified = {}
         self.arg = arg
