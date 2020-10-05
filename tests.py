@@ -177,5 +177,18 @@ class TestLeaves(unittest.TestCase):
         self.assertEqual(str(fantasy), str(fantasy.content),
                          "stringified fantasy should be stringified content")
 
+class TestParser(unittest.TestCase):
+    """Test the parser itself"""
+
+    parser = validtnt.TNTParser()
+
+    def test_whitespace(self):
+        """Test skipping whitespace"""
+        self.assertEqual(self.parser.whitespace(0, '  a'), 2,
+                         "wrong amount of whitespace skipped")
+        with self.assertRaises(AssertionError, msg="didn't error on missing WS"):
+            self.parser.whitespace(0, 'a', True)
+        # TODO: complete
+
 if __name__ == '__main__':
     unittest.main()

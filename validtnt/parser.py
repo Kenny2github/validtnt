@@ -230,7 +230,7 @@ class TNTParser:
             else:
                 break
         assert isinstance(rul, Rules), \
-               f'Rules<->RULES mismatch, report as bug'
+               'Rules<->RULES mismatch, report as bug'
         return match.end(), rul, int(num) if num is not None else None
 
     def refs(self, start: int, text: str) -> Iterator[int]:
@@ -238,7 +238,7 @@ class TNTParser:
         while text[start] not in NUMBERS:
             start += 1
         match = LINENOS.match(text, start)
-        assert match is not None, f'invalid referrals'
+        assert match is not None, 'invalid referrals'
         assert text[match.end()] == ')', \
                f'column {match.end()}: invalid syntax, not a {")"!r}'
         for i in re.split(', ?|,? and ', match.group(0)):
