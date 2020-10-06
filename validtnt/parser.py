@@ -241,5 +241,5 @@ class TNTParser:
         assert match is not None, 'invalid referrals'
         assert text[match.end()] == ')', \
                f'column {match.end()}: invalid syntax, not a {")"!r}'
-        for i in re.split(', ?|,? and ', match.group(0)):
+        for i in re.split(',? and |, ?', match.group(0)):
             yield int(i)

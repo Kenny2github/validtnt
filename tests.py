@@ -3,6 +3,14 @@ import unittest
 import validtnt
 from validtnt import std
 
+# pylint checks membership for all subclasses of parents, so this rule is
+# triggered multiple times; the assertIsInstance already establishes it as
+# a subclass, though, so the no-member check is wrong here.
+# pylint: disable=no-member
+
+a = validtnt.Variable(letter='a')
+b = validtnt.Variable(letter='b')
+
 class TestLeaves(unittest.TestCase):
     """Test the leaves of the parser tree"""
 
@@ -36,10 +44,10 @@ class TestLeaves(unittest.TestCase):
             validtnt.Variable(letter='x')
         with self.assertRaises(TypeError, msg="primes should be int only"):
             validtnt.Variable(letter='a', primes='1')
-        a = validtnt.Variable(letter='a')
-        self.assertIsInstance(a, validtnt.Term, "all variables are terms")
-        self.assertEqual(str(a), 'a', "this variable should be a")
-        self.assertIs(a, validtnt.Variable(letter='a'),
+        vara = validtnt.Variable(letter='a')
+        self.assertIsInstance(vara, validtnt.Term, "all variables are terms")
+        self.assertEqual(str(vara), 'a', "this variable should be a")
+        self.assertIs(vara, validtnt.Variable(letter='a'),
                       "each possible variable should be a singleton")
         aprime = validtnt.Variable(letter='a', primes=2)
         self.assertIsInstance(aprime, validtnt.Term, "all variables are terms")
@@ -71,9 +79,6 @@ class TestLeaves(unittest.TestCase):
 
     def test_formula(self):
         """Test Formula and its subclasses"""
-        a = validtnt.Variable(letter='a')
-        b = validtnt.Variable(letter='b')
-
         with self.assertRaises(TypeError, msg="args should be Terms only"):
             validtnt.Formula(arg1='a', arg2='b')
         with self.assertRaises(TypeError, msg="args shouldn't be Formulas"):
@@ -156,8 +161,6 @@ class TestLeaves(unittest.TestCase):
 
     def test_fantasy(self):
         """Test the Fantasy class"""
-        a = validtnt.Variable(letter='a')
-        b = validtnt.Variable(letter='b')
         premise = validtnt.Formula(arg1=a, arg2=b)
         premise = validtnt.Wrapper(arg=premise)
         premise = validtnt.Statement(formula=premise, rule=validtnt.TNTRule.PREMISE)
@@ -188,7 +191,186 @@ class TestParser(unittest.TestCase):
                          "wrong amount of whitespace skipped")
         with self.assertRaises(AssertionError, msg="didn't error on missing WS"):
             self.parser.whitespace(0, 'a', True)
-        # TODO: complete
+        self.assertEqual(self.parser.whitespace(0, 'a'), 0,
+                         "shouldn't have skipped any whitespace")
+
+    def test_variable(self):
+        """Test parsing variables"""
+        end, var = self.parser.variable(0, "a'' ")
+        self.assertEqual(end, 3, "wrong variable length")
+        self.assertIsInstance(var, validtnt.Variable, "wrong var type")
+        self.assertEqual(var.letter, 'a', "wrong variable name")
+        self.assertEqual(var.primes, 2, "wrong number of primes")
+
+    def test_term(self):
+        """Test parsing generic terms"""
+        # test successorship
+        end, term = self.parser.term(0, 'SS0')
+        self.assertEqual(end, 3, "wrong length consumed")
+        self.assertIsInstance(term, validtnt.Successed, "SS0 not Successed")
+        self.assertEqual(term.successors, 2, "wrong number of Ss")
+        self.assertIs(term.arg, validtnt.Numeral(), "SS0 is SS of 0, not...")
+
+        # test the singleton 0
+        end, term = self.parser.term(0, '0')
+        self.assertEqual(end, 1)
+        self.assertIsInstance(term, validtnt.Numeral)
+        self.assertIs(term, validtnt.Numeral())
+
+        # test multiterms
+        end, term = self.parser.term(0, '(0+0)')
+        self.assertEqual(end, 5, "probably didn't consume ending parenthesis")
+        self.assertIsInstance(term, validtnt.MultiTerm)
+        self.assertIs(term.arg1, validtnt.Numeral(), "wrong argument")
+        self.assertIs(term.arg2, validtnt.Numeral())
+        self.assertEqual(term.operator, validtnt.Operator.ADD)
+
+        # test failed parsing
+        with self.assertRaises(AssertionError, msg="division is not valid"):
+            self.parser.term(0, '(a/b)')
+        with self.assertRaises(AssertionError, msg="closing paren was ignored"):
+            self.parser.term(0, '(a/b[')
+
+    def test_rule(self):
+        """Test parsing rules"""
+        with self.assertRaises(AssertionError, msg="invalid rule"):
+            self.parser.rule(0, 'invalid')
+        end, rule, num = self.parser.rule(0, 'add S')
+        self.assertEqual(end, 5, "probably halted at space")
+        self.assertIs(rule, validtnt.TNTRule.ADD_S, "wrong rule parsed")
+        self.assertIsNone(num, "add S takes no lineno")
+
+        end, rule, num = self.parser.rule(0, 'carry over line 5')
+        self.assertEqual(end, 17, "probably missed the number")
+        self.assertIs(rule, validtnt.PropositionalRule.CARRY_OVER,
+                      "matching special carry failed")
+        self.assertEqual(num, 5)
+
+    def test_refs(self):
+        """Test referral parsing"""
+        refs = list(self.parser.refs(0, '(lines 1, 3, and 90)'))
+        for i in refs:
+            self.assertIsInstance(i, int)
+        self.assertListEqual(refs, [1, 3, 90])
+        with self.assertRaises(AssertionError, msg="invalid line num"):
+            list(self.parser.refs(0, '(lines 1 3 90)'))
+        with self.assertRaises(AssertionError, msg="forgot closing paren"):
+            list(self.parser.refs(0, '(lines 1 3 90 '))
+
+    def test_formula(self):
+        """Test parsing entire formulas"""
+
+        # test fantasy markers
+        end, formula = self.parser.formula(0, '[')
+        self.assertEqual(end, 1, "forgot to consume")
+        self.assertIsInstance(formula, validtnt.FantasyMarker,
+                              "fantasy marker not parsed")
+        self.assertIs(formula.rule, validtnt.FantasyRule.PUSH,
+                      "probably swapped or something")
+        end, formula = self.parser.formula(0, ']')
+        self.assertEqual(end, 1)
+        self.assertIsInstance(formula, validtnt.FantasyMarker)
+        self.assertIs(formula.rule, validtnt.FantasyRule.POP)
+
+        # test base case
+        with self.assertRaises(AssertionError, msg="two terms: illegal"):
+            self.parser.formula(0, '(a+b)(a+b)=(a+b)')
+        end, formula = self.parser.formula(0, 'a=b ')
+        self.assertEqual(end, 3)
+        self.assertIsInstance(formula, validtnt.Formula)
+        self.assertIs(formula.arg1, a)
+        self.assertIs(formula.arg2, b)
+
+        # test negations
+        end, formula = self.parser.formula(0, '~~a=b ')
+        self.assertEqual(end, 5)
+        self.assertIsInstance(formula, validtnt.Negated)
+        self.assertEqual(formula.negations, 2, "possibly skipped one")
+        self.assertIsInstance(formula.arg, validtnt.Formula)
+        self.assertIs(formula.arg.arg1, a)
+        self.assertIs(formula.arg.arg2, b)
+
+        # test quantifiers
+        end, formula = self.parser.formula(0, 'Aa:a=b ')
+        self.assertEqual(end, 6)
+        self.assertIsInstance(formula, validtnt.Quantified)
+        self.assertIs(formula.quantifier, validtnt.Quantifier.ALL)
+        self.assertIs(formula.variable, a)
+        self.assertIsInstance(formula.arg, validtnt.Formula)
+        self.assertIs(formula.arg.arg1, a)
+        self.assertIs(formula.arg.arg2, b)
+        with self.assertRaises(AssertionError, msg="colon should be checked"):
+            self.parser.formula(0, 'Aa-a=b')
+
+        # test compound formulas
+        with self.assertRaises(AssertionError, msg="closing should be checked"):
+            self.parser.formula(0, '<a=b&b=a)')
+        with self.assertRaises(AssertionError, msg="operator should be checked"):
+            self.parser.formula(0, '<a=b/b=a>')
+        end, formula = self.parser.formula(0, '<a=b&b=a>')
+        self.assertEqual(end, 9, "consume closing")
+        self.assertIsInstance(formula, validtnt.Compound)
+        self.assertIs(formula.operator, validtnt.Logic.AND)
+        self.assertIsInstance(formula.arg1, validtnt.Formula)
+        self.assertIsInstance(formula.arg2, validtnt.Formula)
+        self.assertIs(formula.arg1.arg1, a)
+        self.assertIs(formula.arg1.arg2, b)
+        self.assertIs(formula.arg2.arg1, b)
+        self.assertIs(formula.arg2.arg2, a)
+
+    def test_parse_line(self):
+        """Test entire line parsing"""
+        # get exceptional circumstances out of the way
+        with self.assertRaises(TypeError, msg="can't operate on no text"):
+            self.parser.parse_line(0, None)
+        self.assertIsNone(self.parser.parse_line(0, '\t \n'), "empty line")
+        with self.assertRaises(AssertionError, msg="cut-off string should error"):
+            self.parser.parse_line(0, 'a=')
+
+        stmt = self.parser.parse_line(None, '0 a=b premise')
+        self.assertIsInstance(stmt, validtnt.Statement, "you had one job")
+        self.assertEqual(stmt.lineno, 0)
+        self.assertIsInstance(stmt.formula, validtnt.Wrapper,
+                              "all formulas must be wrapped")
+        self.assertIsInstance(stmt.formula.arg, validtnt.Formula)
+        self.assertIs(stmt.formula.arg.arg1, a)
+        self.assertIs(stmt.formula.arg.arg2, b)
+        self.assertIs(stmt.rule, validtnt.TNTRule.PREMISE)
+        self.assertFalse(bool(stmt.referrals))
+
+        stmt = self.parser.parse_line(None, 'a=b premise (line 3, 4, 9)')
+        self.assertIsNone(stmt.lineno, "no line number should have been set")
+        self.assertIsInstance(stmt.referrals, list)
+        self.assertListEqual(stmt.referrals, [3, 4, 9])
+
+    def test_parse(self):
+        """Test whole text parsing"""
+        with self.assertRaises(TypeError, msg="can't operate on no text"):
+            self.parser.parse()
+        self.assertIsInstance(self.parser.parse('a=b premise'), validtnt.Text)
+
+        with self.assertRaises(validtnt.ParsingFailed,
+                               msg="error on stack underflow") as cm:
+            self.parser.parse('] pop')
+        self.assertEqual(cm.exception.line, '] pop')
+        with self.assertRaises(validtnt.ParsingFailed, msg="error on non-empty stack"):
+            self.parser.parse('[ push')
+
+        # actually test multiple lines
+        text = self.parser.parse("""1 a=b premise
+                                    2 b=a symmetry""")
+        self.assertEqual(len(text), 2)
+        self.assertEqual(str(text[1]).split(), '1 a=b premise'.split(),
+                         "probably got the symmetry one instead")
+        self.assertIs(text[2].rule, validtnt.TNTRule.SYMMETRY)
+
+        text = self.parser.parse("""1 [ push
+            2 a=b premise
+        3 ] pop
+        4 <a=b]a=b> fantasy rule""")
+        self.assertEqual(len(text), 4, "fantasy markers probably not included")
+        self.assertIsInstance(text[2].fantasy, validtnt.Fantasy)
+        self.assertIsNone(text[4].fantasy)
 
 if __name__ == '__main__':
     unittest.main()
