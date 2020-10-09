@@ -372,5 +372,21 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(text[2].fantasy, validtnt.Fantasy)
         self.assertIsNone(text[4].fantasy)
 
+class TestRunner(unittest.TestCase):
+    """Test the runner"""
+
+    parser = validtnt.TNTParser()
+    runner = validtnt.TNTRunner()
+
+    def test_find_fantasy(self):
+        """Test the find_fantasy method"""
+        stmt = self.parser.parse_line(0, 'a=b premise')
+        stmt.fantasy = validtnt.Fantasy(
+            content=validtnt.Text([(stmt.lineno, stmt)]))
+        stmt.fantasy.fantasy = validtnt.Fantasy(content=validtnt.Text())
+        self.assertTrue(self.runner.find_fantasy(stmt.fantasy.fantasy, stmt))
+        self.assertFalse(self.runner.find_fantasy(
+            validtnt.Fantasy(content=validtnt.Text()), stmt))
+
 if __name__ == '__main__':
     unittest.main()

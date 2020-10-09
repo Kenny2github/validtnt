@@ -77,7 +77,7 @@ class TNTRunner:
 
     text = None
 
-    def __init__(self, text: Union[str, Text, type(None)] = None):
+    def __init__(self, text: Union[str, Text, None] = None):
         """Initialize the runner, optionally with text to validate.
         (If not a string, it must be an OrderedDict, ideally straight
         out of the parser.)
@@ -87,16 +87,16 @@ class TNTRunner:
         if text is not None:
             self.text = text
 
-    def validate(self, text: Optional[Text] = None) -> None:
+    def validate(self, text: Union[str, Text, None] = None) -> None:
         """Validates the OrderedDict of line numbers to TNT statements.
         If no issues, returns None.
         Otherwise, raises an exception tailored to the rule.
         ``text`` can be set at initialization or passed at call.
         """
         text = text or self.text
-        if not isinstance(text, Text):
-            raise TypeError(f'text must be Text, not {type(text).__name__!r}')
-        if self.text is None:
+        if isinstance(text, str):
+            text = TNTParser().parse(text)
+        if text is not None:
             self.text = text
         try:
             for i, (lineno, line) in enumerate(text.items()):
@@ -107,7 +107,7 @@ class TNTRunner:
             exc.args = (f"line {line.lineno}: '{str(line)}' " + exc.args[0], *exc.args[1:])
             raise
 
-    def find_fantasy(self, fantasy: Fantasy, obj) -> bool:
+    def find_fantasy(self, fantasy: Fantasy, obj: Union[Statement, Fantasy]) -> bool:
         """Returns True if ``obj`` has any parent Fantasy ``fantasy``."""
         if fantasy is None:
             return True # all objects have top level as parent
