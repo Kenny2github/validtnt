@@ -376,17 +376,140 @@ class TestRunner(unittest.TestCase):
     """Test the runner"""
 
     parser = validtnt.TNTParser()
-    runner = validtnt.TNTRunner()
 
     def test_find_fantasy(self):
-        """Test the find_fantasy method"""
+        """Test finding a fantasy in its ancestors"""
+        runner = validtnt.TNTRunner()
         stmt = self.parser.parse_line(0, 'a=b premise')
         stmt.fantasy = validtnt.Fantasy(
             content=validtnt.Text([(stmt.lineno, stmt)]))
         stmt.fantasy.fantasy = validtnt.Fantasy(content=validtnt.Text())
-        self.assertTrue(self.runner.find_fantasy(stmt.fantasy.fantasy, stmt))
-        self.assertFalse(self.runner.find_fantasy(
+        self.assertTrue(runner.find_fantasy(stmt.fantasy.fantasy, stmt))
+        self.assertFalse(runner.find_fantasy(
             validtnt.Fantasy(content=validtnt.Text()), stmt))
+
+    def test_raise_fantasy(self):
+        """Test fantasy level checking"""
+        runner = validtnt.TNTRunner('''a=b premise
+                                    [ push
+                                        b=a premise
+                                        a=b carry over line 0
+                                    ] pop
+                                    <b=a]a=b> fantasy rule''')
+        self.assertTrue(runner.raise_fantasy(2, runner.text.vals[-1].fantasy,
+                                             'none', 'none'),
+                        "Statement from inner fantasy should be skipped")
+        self.assertFalse(runner.raise_fantasy(2, runner.text[3].fantasy,
+                                              'none', 'none'),
+                         "Statement in same fantasy should be checked")
+        with self.assertRaisesRegex(validtnt.MissingArgument,
+                                    'rule missing corresponding arg',
+                                    msg="Statement in outer fantasy raises"):
+            runner.raise_fantasy(0, runner.text[2].fantasy, 'rule', 'arg')
+        with self.assertRaisesRegex(validtnt.MissingArgument,
+                                    'rule missing corresponding arg',
+                                    msg="Out of range statement raises"):
+            runner.raise_fantasy(-1, runner.text[2].fantasy, 'rule', 'arg')
+        with self.assertRaisesRegex(validtnt.MissingArgument,
+                                    'rule missing corresponding arg',
+                                    msg="Out of range statement raises"):
+            runner.raise_fantasy(10, runner.text[2].fantasy, 'rule', 'arg')
+
+    def test_find_arg(self):
+        """Test finding an argument that passes a cmp test"""
+        runner = validtnt.TNTRunner('''a=b premise
+                                    b=a symmetry''')
+        line = runner.find_arg(1, runner.text[1], lambda ln, st: (
+            ln.formula.arg.arg1 is st.formula.arg.arg2
+            and ln.formula.arg.arg2 is st.formula.arg.arg1
+        ), 'none', 'none')
+        self.assertIsInstance(line, validtnt.Statement, 'uh oh stinky')
+        self.assertEqual(str(line), '0 a=b\tpremise')
+
+        with self.assertRaises(validtnt.MissingArgument,
+                               msg="How did a constant-False cmp work?"):
+            runner.find_arg(1, runner.text[1], lambda ln, st: False, '', '')
+
+    def test_at_most_refs(self):
+        """Test checking for too many referrals"""
+        runner = validtnt.TNTRunner()
+        line = self.parser.parse_line(0, 'a=b premise')
+        self.assertIsNone(runner.at_most_refs(line, 2, 'none'))
+        with self.assertRaises(validtnt.TooManyReferrals,
+                               msg="no raise?"):
+            runner.at_most_refs(line, -1, 'rule')
+
+    def test_joining(self):
+        """Test the joining rule"""
+        runner = validtnt.TNTRunner('''a=b premise
+                                    b=a premise
+                                    <a=b&b=a> joining''')
+        # if this fails, it will be an error
+        self.assertIsNone(runner.rule_joining(2, runner.text[2]))
+        with self.assertRaises(validtnt.InvalidRule,
+                               msg="wrong operator should raise"):
+            # this check should be performed first
+            runner = validtnt.TNTRunner('''<a=b|b=a> joining''')
+            runner.rule_joining(0, runner.text[0])
+        with self.assertRaises(validtnt.TooManyReferrals,
+                               msg="joining only allows 2 referrals"):
+            runner = validtnt.TNTRunner('''<a=b&b=a> joining (lines 1,2,3)''')
+            runner.rule_joining(0, runner.text[0])
+        with self.assertRaises(validtnt.InvalidReferral,
+                               msg="directly wrong referral should raise"):
+            runner = validtnt.TNTRunner('''a=b premise
+                                        b=a premise
+                                        <a=b&b=c> joining (lines 0, 1)''')
+            runner.rule_joining(2, runner.text[2])
+        with self.assertRaises(validtnt.MissingArgument,
+                               msg="indirectly referring prev wrongly raises"):
+            runner = validtnt.TNTRunner('''
+                [ Indirect referrals should not search infinitely far back. ]
+                [ They should only look at the directly previous couple. ]
+                1 a=b premise
+                2 b=a premise
+                3 c=d premise
+                4 d=c premise
+                5 <a=b&b=a> joining
+            '''.strip())
+            runner.rule_joining(4, runner.text[5])
+        runner = validtnt.TNTRunner('''
+            [ Direct and indirect referrals should be combinable. ]
+            1 a=b premise
+            2 c=d premise
+            3 b=a premise
+            4 <a=b&b=a> joining (line 1)
+        '''.strip())
+        self.assertIsNone(runner.rule_joining(3, runner.text[4]))
+
+    def test_separation(self):
+        """Test the separation rule"""
+        runner = validtnt.TNTRunner('''<a=b&b=a> premise
+                                    a=b separation''')
+        self.assertIsNone(runner.rule_separation(1, runner.text[1]))
+        with self.assertRaises(validtnt.TooManyReferrals,
+                               msg="separation only takes 1 ref"):
+            runner = validtnt.TNTRunner('''a=b separation (lines 1,2)''')
+            runner.rule_separation(0, runner.text[0])
+        with self.assertRaises(validtnt.InvalidReferral,
+                               msg="wrong operator should raise"):
+            runner = validtnt.TNTRunner('''<a=b|b=a> premise
+                                        a=b separation''')
+            runner.rule_separation(1, runner.text[1])
+        with self.assertRaises(validtnt.InvalidReferral,
+                               msg="directly wrong referral should raise"):
+            runner = validtnt.TNTRunner('''<a=b&b=a> premise
+                                        a=c separation (line 1)''')
+            runner.rule_separation(1, runner.text[1])
+        with self.assertRaises(validtnt.InvalidReferral,
+                               msg="indirectly wrong referral should raise"):
+            runner = validtnt.TNTRunner('''<a=b&b=a> premise
+                                        a=c separation''')
+            runner.rule_separation(1, runner.text[1])
+        with self.assertRaises(validtnt.MissingArgument,
+                               msg="no referral should raise"):
+            runner = validtnt.TNTRunner('''a=b separation''')
+            runner.rule_separation(0, runner.text[0])
 
 if __name__ == '__main__':
     unittest.main()

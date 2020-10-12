@@ -9,7 +9,10 @@ from .parser import TNTParser
 from .leaves import Text, Fantasy, Statement, Logic, Compound, FantasyMarker, \
      Quantifier
 
-__all__ = ['TNTRunner']#, 'InvalidRule']
+__all__ = ['TNTRunner', 'ProofMistake', 'InvalidRule', 'NotARule',
+           'InvalidReferral', 'TooManyReferrals', 'MissingArgument',
+           'SpecifyingQuantifiedVariable', 'GeneralizingFantasyVariable',
+           'InvalidFantasy']
 
 class ProofMistake(Exception):
     """Base class for mistakes in a TNT proof."""
@@ -124,12 +127,32 @@ class TNTRunner:
         if the fantasy ends prematurely.
         """
         try:
+            if idx < 0:
+                # When idx < 0, it'll wrap to the end. Check for this instead.
+                raise MissingArgument(rule + ' missing corresponding ' + arg)
             if self.text.vals[idx].fantasy is not fantasy:
+                # If the fantasy of the original find_arg line appears anywhere
+                # in the ancestry of this previous line's fantasy, then this line's
+                # fantasy is on the same or a deeper level than the original line.
+                # The original line can't be derived from a line in a deeper fantasy,
+                # so skip it - return True here.
                 if self.find_fantasy(fantasy, self.text.vals[idx]):
                     return True
+                # The fantasy of the original line doesn't appear in this line's
+                # ancestry, so this line is on an outer level than the original.
+                # Besides the carry over rule, the original line can't be derived
+                # from a line outside its own fantasy, and the carry over rule
+                # doesn't even use this function at all. We've checked all that
+                # the original line could possibly have been derived from -
+                # there is no valid argument for the rule. Raise an error as such.
                 raise MissingArgument(rule + ' missing corresponding ' + arg)
+            # If the original line and this previous line are in the same fantasy,
+            # then they are on the same level - they can be compared. Continue
+            # with the iteration, and don't skip it.
             return False
         except IndexError:
+            # If we hit the limit without encountering the end of a fantasy,
+            # we're at the end of the proof instead. Nothing found, so raise.
             raise MissingArgument(rule + ' missing corresponding ' + arg) from None
 
     def at_most_refs(self, line: Statement, count: int, rule: str) -> None:
@@ -150,6 +173,10 @@ class TNTRunner:
         fantasy = line.fantasy
         while i > 0:
             i -= 1
+            # if True, text.vals[i] is in an inner fantasy than line,
+            # and can't be derived from. Skip it.
+            # if False, text.vals[i] is in the same fantasy. Check it.
+            # this will raise an error if we've reached the limit.
             if self.raise_fantasy(i, fantasy, rule, argname):
                 continue
             try:
@@ -197,17 +224,47 @@ class TNTRunner:
             else:
                 raise InvalidReferral(f'line {line.referrals[1]} is not '
                                       f'an operand in {formula!s}')
-        i = idx
         fantasy = line.fantasy
-        while not (arg1 and arg2):
-            i -= 1
-            if self.raise_fantasy(i, fantasy, 'joining',
-                                  f"argument {'2' if arg1 else '1'}"):
-                continue
-            if not arg1 and self.text.vals[i].formula == line.formula.arg.arg1:
+        # if one is found, idx can just be 1 since we can check only
+        # the immediately previous statement; if both are found,
+        # there's no way this will raise; if neither are found,
+        # then we need two previous lines
+        if idx < 2 - (arg1 + arg2):
+            raise MissingArgument('no implicit referrals available, but '
+                                  'one is needed for joining')
+        arg1msg = f'no matching statement found for {formula.arg1!s}'
+        arg2msg = f'no matching statement found for {formula.arg2!s}'
+        arg1q = self.text.vals[idx-1]
+        if (arg1 + arg2) < 1:
+            arg2q = self.text.vals[idx-2]
+        if not arg1 and arg1q.fantasy is line.fantasy:
+            if arg1q.formula == formula.arg1:
+                # if the most recent line matches, great
                 arg1 = True
-            if not arg2 and self.text.vals[i].formula == line.formula.arg.arg2:
+            elif not arg2 and self.text.vals[idx-2].formula == formula.arg1:
+                # only try to match the next most recent line
+                # if both referrals are implicit
+                arg1 = True
+        if not arg1:
+            raise MissingArgument(arg1msg)
+        if not arg2 and arg1q.fantasy is line.fantasy:
+            if arg1q.formula == formula.arg2:
+                # already raised if arg1 wasn't found, so
+                # if arg2 is immediate then great, that's fine
                 arg2 = True
+            elif (
+                not arg1
+                and arg1q.formula == formula.arg1
+                and arg2q.fantasy is line.fantasy
+                and arg2q.formula == formula.arg2
+            ):
+                # however, if arg2 is not immediate then we also have to
+                # make sure that the immediate line has already been claimed
+                # by arg1 before assuming we can check next most recent
+                arg2 = True
+        if not arg2:
+            raise MissingArgument('no matching statement found for '
+                                  + str(formula.arg2))
 
     def rule_separation(self, idx: int, line: Statement) -> None:
         """If ``<x∧y>`` is a theorem, then both ``x`` and ``y`` are theorems."""
@@ -215,16 +272,16 @@ class TNTRunner:
         self.at_most_refs(line, 1, 'separation')
         if len(line.referrals) == 1:
             arg = self.text[line.referrals[0]].formula.arg
-            if not isinstance(arg, Compound) \
-                   or arg.operator is not Logic.AND:
-                raise InvalidReferral('referral is not an AND formula')
-            if line.formula.arg not in (arg.arg1, arg.arg2):
-                raise InvalidReferral('referral does not have formula as operand')
+        elif idx > 0 and self.text.vals[idx-1].fantasy is line.fantasy:
+            arg = self.text.vals[idx-1].formula.arg
         else:
-            self.find_arg(idx, line, lambda line, stmt: (
-                line.formula.arg in (stmt.formula.arg.arg1,
-                                     stmt.formula.arg.arg2)
-            ), 'separation', 'joined formula')
+            raise MissingArgument('separation missing both direct '
+                                  'and indirect referral')
+        if not isinstance(arg, Compound) \
+                or arg.operator is not Logic.AND:
+            raise InvalidReferral('referral is not an AND formula')
+        if line.formula.arg not in (arg.arg1, arg.arg2):
+            raise InvalidReferral('referral does not have formula as operand')
 
     def rule_double_tilde(self, idx: int, line: Statement) -> None:
         """The string ``~~`` can be deleted from any theorem.
