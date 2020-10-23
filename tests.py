@@ -257,10 +257,8 @@ class TestParser(unittest.TestCase):
         with self.assertRaises(AssertionError, msg="forgot closing paren"):
             list(self.parser.refs(0, '(lines 1 3 90 '))
 
-    def test_formula(self):
-        """Test parsing entire formulas"""
-
-        # test fantasy markers
+    def test_fantasy_markers(self):
+        """Test parsing fantasy markers: [ ]"""
         end, formula = self.parser.formula(0, '[')
         self.assertEqual(end, 1, "forgot to consume")
         self.assertIsInstance(formula, validtnt.FantasyMarker,
@@ -272,7 +270,8 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(formula, validtnt.FantasyMarker)
         self.assertIs(formula.rule, validtnt.FantasyRule.POP)
 
-        # test base case
+    def test_atoms(self):
+        """Test base case: a=b"""
         with self.assertRaises(AssertionError, msg="two terms: illegal"):
             self.parser.formula(0, '(a+b)(a+b)=(a+b)')
         end, formula = self.parser.formula(0, 'a=b ')
@@ -281,7 +280,8 @@ class TestParser(unittest.TestCase):
         self.assertIs(formula.arg1, a)
         self.assertIs(formula.arg2, b)
 
-        # test negations
+    def test_negations(self):
+        """Test negations: ~a=b"""
         end, formula = self.parser.formula(0, '~~a=b ')
         self.assertEqual(end, 5)
         self.assertIsInstance(formula, validtnt.Negated)
@@ -290,7 +290,8 @@ class TestParser(unittest.TestCase):
         self.assertIs(formula.arg.arg1, a)
         self.assertIs(formula.arg.arg2, b)
 
-        # test quantifiers
+    def test_quantifications(self):
+        """Test quantifications: Au:x Eu:x"""
         end, formula = self.parser.formula(0, 'Aa:a=b ')
         self.assertEqual(end, 6)
         self.assertIsInstance(formula, validtnt.Quantified)
@@ -302,11 +303,16 @@ class TestParser(unittest.TestCase):
         with self.assertRaises(AssertionError, msg="colon should be checked"):
             self.parser.formula(0, 'Aa-a=b')
 
-        # test compound formulas
+    def test_compounds(self):
+        """Test compound formulas: <P&Q> <P|Q> <P]Q>"""
         with self.assertRaises(AssertionError, msg="closing should be checked"):
             self.parser.formula(0, '<a=b&b=a)')
         with self.assertRaises(AssertionError, msg="operator should be checked"):
             self.parser.formula(0, '<a=b/b=a>')
+        with self.assertRaises(AssertionError,
+                               msg="free vars in one arg "
+                               "cannot be quantified in another"):
+            self.parser.formula(0, '<Aa:a=b&Ab:b=a>')
         end, formula = self.parser.formula(0, '<a=b&b=a>')
         self.assertEqual(end, 9, "consume closing")
         self.assertIsInstance(formula, validtnt.Compound)

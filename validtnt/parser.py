@@ -171,6 +171,16 @@ class TNTParser:
             start, arg2 = self.formula(start+1, text)
             assert text[start] == '>', \
                    f'column {start}: invalid syntax, not a {">"!r}'
+            warg1 = Wrapper(arg=arg1)
+            warg2 = Wrapper(arg=arg2)
+            for var in warg1.free:
+                assert var not in warg2.quantified, \
+                       f'{str(var)!r} free in first formula ' \
+                       'but quantified in second'
+            for var in warg2.free:
+                assert var not in warg1.quantified, \
+                       f'{str(var)!r} free in second formula ' \
+                       'but quantified in first'
             return start+1, Compound(arg1=arg1, arg2=arg2, operator=logop)
         # ...=...
         start, arg1 = self.term(start, text)
