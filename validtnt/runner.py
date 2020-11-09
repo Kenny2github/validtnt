@@ -187,6 +187,15 @@ class TNTRunner:
         if i <= 0:
             raise MissingArgument(rule + ' missing corresponding ' + argname)
 
+    def get_arg(self, idx: int, line: Statement) -> Statement:
+        """Get the direct or indirect referral and raise if it's missing."""
+        if len(line.referrals) == 1:
+            return self.text[line.referrals[0]]
+        if idx > 0 and self.text.vals[idx-1].fantasy is line.fantasy:
+            return self.text.vals[idx-1]
+        raise MissingArgument('separation missing both direct '
+                              'and indirect referral')
+
     def rule_invalid(self, idx: int, line: Statement) -> None:
         """How did you get here?"""
         #TODO: this is a print while not all rules are handled yet
@@ -270,13 +279,7 @@ class TNTRunner:
         """If ``<x∧y>`` is a theorem, then both ``x`` and ``y`` are theorems."""
         arg = None
         self.at_most_refs(line, 1, 'separation')
-        if len(line.referrals) == 1:
-            arg = self.text[line.referrals[0]].formula.arg
-        elif idx > 0 and self.text.vals[idx-1].fantasy is line.fantasy:
-            arg = self.text.vals[idx-1].formula.arg
-        else:
-            raise MissingArgument('separation missing both direct '
-                                  'and indirect referral')
+        arg = self.get_arg(idx, line).formula.arg
         if not isinstance(arg, Compound) \
                 or arg.operator is not Logic.AND:
             raise InvalidReferral('referral is not an AND formula')
@@ -289,46 +292,28 @@ class TNTRunner:
         provided that the resulting string is itself well-formed.
         """
         self.at_most_refs(line, 1, 'double-tilde')
-        def referral_matches(line: Statement, arg: Statement) -> bool:
-            return str(line.formula).replace('~~', '') \
-                   == str(arg.formula).replace('~~', '')
-        if len(line.referrals) == 1:
-            arg = self.text[line.referrals[0]]
-            if not referral_matches(line, arg):
-                raise InvalidReferral('change in formula does not only '
-                                      'consist of adding or removing '
-                                      'double-tildes')
-        else:
-            self.find_arg(idx, line, referral_matches, 'double-tilde',
-                          'previous well-formed string')
+        arg = self.get_arg(idx, line)
+        if str(line.formula).replace('~~', '') != str(arg.formula).replace('~~', ''):
+            raise InvalidReferral('change in formula does not only consist '
+                                  'of adding or removing double-tildes')
 
     def rule_fantasy_rule(self, idx: int, line: Statement) -> None:
         """If ``y`` can be derived when ``x`` is assumed to be a theorem,
         then ``<x⊃y>`` is a theorem.
         """
         self.at_most_refs(line, 0, 'fantasy rule')
-        i = idx
-        arg = None
-        try:
-            while arg is None:
-                i -= 1
-                if self.text.vals[i].fantasy is not line.fantasy:
-                    if self.text.vals[i].fantasy is None:
-                        continue
-                    if self.text.vals[i].fantasy.fantasy is line.fantasy:
-                        arg = self.text.vals[i]
-                    elif self.find_fantasy(line.fantasy, self.text.vals[i]):
-                        continue
-                    else:
-                        raise MissingArgument('fantasy rule missing '
-                                              'corresponding fantasy')
-        except IndexError:
+        if idx <= 0:
             raise MissingArgument('fantasy rule missing corresponding fantasy')
-        fant = arg.fantasy
-        if fant.premise.formula != line.formula.arg.arg1:
+        arg = self.text.vals[idx-1]
+        if arg.fantasy is line.fantasy:
+            raise MissingArgument('fantasy conclusion must come '
+                                  'directly after fantasy')
+        if arg.fantasy is None or arg.fantasy.fantasy is not line.fantasy:
+            raise InvalidRule('did you mean premise?')
+        if arg.fantasy.premise.formula != line.formula.arg.arg1:
             raise InvalidFantasy('premise of fantasy does not match '
                                  'condition of IMPLIES formula')
-        if fant.outcome.formula != line.formula.arg.arg2:
+        if arg.fantasy.outcome.formula != line.formula.arg.arg2:
             raise InvalidFantasy('outcome of fantasy does not match '
                                  'result of IMPLIES formula')
 
@@ -672,6 +657,8 @@ class TNTRunner:
             raise InvalidRule('cannot use pop on actual formula')
         if line.formula.arg.rule != line.rule:
             raise InvalidRule('pop rule used on push statement')
+        if self.text.vals[idx+1].rule.value != 'fantasy rule':
+            raise InvalidFantasy('fantasy was not followed by conclusion')
 
     def rule_premise(self, idx: int, line: Statement) -> None:
         """The first statement in a fantasy is assumed true as the premise."""

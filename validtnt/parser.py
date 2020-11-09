@@ -63,8 +63,11 @@ class TNTParser:
                 statement = self.parse_line(lineno, line)
                 if statement is None: # comment/empty
                     continue
+                statement.fantasy = fantasy
                 if statement.rule is FantasyRule.POP and fantasy is not None:
                     fantasy.content.flash()
+                    if not fantasy.content.vals:
+                        raise AssertionError('empty fantasy')
                     fantasy = fantasy.fantasy
                     if fantasy is None:
                         content = result
@@ -72,7 +75,6 @@ class TNTParser:
                         content = fantasy.content
                 elif statement.rule is FantasyRule.POP:
                     raise AssertionError('popping from top level')
-                statement.fantasy = fantasy
                 if statement.rule is FantasyRule.PUSH:
                     fantasy = Fantasy(lineno=lineno,
                                       content=Text(),
