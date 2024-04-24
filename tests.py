@@ -3,6 +3,7 @@ import unittest
 import validtnt
 from validtnt import std
 from validtnt.parser import recurse_vars
+from validtnt.runner import TNTRunner
 
 # pylint checks membership for all subclasses of parents, so this rule is
 # triggered multiple times; the assertIsInstance already establishes it as
@@ -625,4 +626,10 @@ class TestRunner(unittest.TestCase):
             runner.rule_carry(3, runner.text[3])
 
 if __name__ == '__main__':
-    unittest.main()
+    import sys
+    if len(sys.argv) > 1:
+        with open(sys.argv[1]) as f:
+            runner = TNTRunner(f.read())
+        runner.validate()
+    else:
+        unittest.main()
