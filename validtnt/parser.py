@@ -3,7 +3,7 @@ import re
 from typing import Optional, Tuple, Iterator, get_args
 from .leaves import Statement, Formula, FantasyMarker, FantasyRule, \
      Negated, Quantifier, std, Quantified, Logic, Compound, Variable, \
-     Term, Numeral, Operator, Successed, MultiTerm, Rules, Wrapper, \
+     Term, Numeral, Operator, Successed, MultiTerm, Rules, \
      Fantasy, Text
 
 __all__ = ['ParsingFailed', 'TNTParser']
@@ -35,6 +35,20 @@ RULES = re.compile('''(?xi)
 ''')
 LINENOS = re.compile(r'(?:[0-9]+)(?:(?:, ?|,? and )(?:[0-9]+))*')
 COMMENT = re.compile(r'\[[^\n\]]+\]')
+
+def recurse_vars(formula: Formula | Term, quant: dict[Variable, Quantifier],
+                 free: set[Variable]) -> None:
+    """Compute which variables are quantified by recursing into each argument."""
+    if isinstance(formula, (Negated, Quantified)):
+        if isinstance(formula, Quantified):
+            quant[formula.variable] = formula.quantifier
+        recurse_vars(formula.arg, quant, free)
+    elif isinstance(formula, Variable):
+        if formula not in quant:
+            free.add(formula)
+    elif isinstance(formula, (Compound, Formula)):
+        recurse_vars(formula.arg1, quant, free)
+        recurse_vars(formula.arg2, quant, free)
 
 class TNTParser:
     """Parse TNT text into objects."""
@@ -124,9 +138,7 @@ class TNTParser:
                 refs = []
             if start < len(text) and text[start] == '(':
                 refs.extend(self.refs(start, text))
-            return Statement(lineno=num,
-                             # find free variables, for use in runner
-                             formula=Wrapper(arg=formula),
+            return Statement(lineno=num, formula=formula,
                              rule=rule, referrals=refs)
         except IndexError:
             raise AssertionError('unexpected EOL')
@@ -173,14 +185,18 @@ class TNTParser:
             start, arg2 = self.formula(start+1, text)
             assert text[start] == '>', \
                    f'column {start}: invalid syntax, not a {">"!r}'
-            warg1 = Wrapper(arg=arg1)
-            warg2 = Wrapper(arg=arg2)
-            for var in warg1.free:
-                assert var not in warg2.quantified, \
+            quantified1 = {}
+            free1 = set()
+            recurse_vars(arg1, quantified1, free1)
+            quantified2 = {}
+            free2 = set()
+            recurse_vars(arg2, quantified2, free2)
+            for var in free1:
+                assert var not in quantified2, \
                        f'{str(var)!r} free in first formula ' \
                        'but quantified in second'
-            for var in warg2.free:
-                assert var not in warg1.quantified, \
+            for var in free2:
+                assert var not in quantified1, \
                        f'{str(var)!r} free in second formula ' \
                        'but quantified in first'
             return start+1, Compound(arg1=arg1, arg2=arg2, operator=logop)

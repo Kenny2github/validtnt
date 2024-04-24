@@ -9,7 +9,7 @@ from collections import OrderedDict
 __all__ = ['std', 'Quantifier', 'Logic', 'Operator', 'Rule',
            'PropositionalRule', 'TNTRule', 'FantasyRule', 'Rules',
            'Term', 'Numeral', 'Variable', 'Successed', 'MultiTerm', 'Formula',
-           'Negated', 'Quantified', 'Compound', 'Wrapper', 'Statement',
+           'Negated', 'Quantified', 'Compound', 'Statement',
            'FantasyMarker', 'Fantasy', 'Text']
 
 # Symbols used
@@ -224,40 +224,6 @@ class Compound(Formula):
             str(self.arg2),
         )
 
-def _recurse_vars(formula: Formula, quant: dict, free: set) -> None:
-    """Compute which variables are quantified by recursing into each argument."""
-    if isinstance(formula, (Negated, Quantified)):
-        if isinstance(formula, Quantified):
-            quant[formula.variable] = formula.quantifier
-        _recurse_vars(formula.arg, quant, free)
-    elif isinstance(formula, Compound):
-        _recurse_vars(formula.arg1, quant, free)
-        _recurse_vars(formula.arg2, quant, free)
-    elif isinstance(formula, Variable):
-        if formula not in quant:
-            free.add(formula)
-
-@dataclass(kw_only=False, eq=False)
-class Wrapper(Formula):
-    """Wrapper class to store variable quantification information."""
-    arg1: None = field(default=None, init=False)
-    arg2: None = field(default=None, init=False)
-    arg: Formula
-    free: set[Variable]
-    quantified: dict # Variable: Quantifier
-
-    def __init__(self, *, arg: Formula):
-        """Find free variables and register them."""
-        if not isinstance(arg, Formula):
-            raise TypeError(f"'arg' is not 'Formula': {arg!r}")
-        self.free = set()
-        self.quantified = {}
-        self.arg = arg
-        _recurse_vars(self.arg, self.quantified, self.free)
-
-    def __str__(self):
-        return str(self.arg)
-
 @dataclass(kw_only=False, eq=False)
 class FantasyMarker(Formula):
     """Push or pop a fantasy."""
@@ -287,7 +253,7 @@ class Statement:
        specification is stored as the first (and only) referral.)
     Separated by spaces.
     """
-    formula: Wrapper | FantasyMarker
+    formula: Formula | FantasyMarker
     rule: Rule
     lineno: int | None = None
     referrals: list = field(default_factory=list)

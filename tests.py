@@ -2,6 +2,7 @@
 import unittest
 import validtnt
 from validtnt import std
+from validtnt.parser import recurse_vars
 
 # pylint checks membership for all subclasses of parents, so this rule is
 # triggered multiple times; the assertIsInstance already establishes it as
@@ -93,14 +94,6 @@ class TestLeaves(unittest.TestCase):
         self.assertEqual(str(notandall), '<~a=b\N{LOGICAL AND}\N{FOR ALL}a:a=b>',
                          "wrong representation for <~a=b&Aa:a=b>")
 
-        wrapped = validtnt.Wrapper(arg=notandall)
-        self.assertIsInstance(wrapped, validtnt.Formula,
-                              "wrapped formula is formula")
-        self.assertEqual(str(wrapped), str(notandall), "wrapper shouldn't add")
-        self.assertIs(wrapped.quantified.get(a, None), validtnt.Quantifier.ALL,
-                      "variable a should be quantified ALL")
-        self.assertIn(b, wrapped.free, "variable b should be free")
-
         push = validtnt.FantasyMarker(rule=validtnt.FantasyRule.PUSH)
         self.assertIsInstance(push, validtnt.Formula,
                               "fantasy marker is formula, technically")
@@ -110,7 +103,6 @@ class TestLeaves(unittest.TestCase):
         """Test the Statement class"""
         formula = validtnt.Formula(arg1=validtnt.Variable(letter='a'),
                                    arg2=validtnt.Variable(letter='b'))
-        formula = validtnt.Wrapper(arg=formula)
         stmt = validtnt.Statement(lineno=1, formula=formula,
                                   rule=validtnt.TNTRule.ADD_S, referrals=[104],
                                   fantasy=validtnt.Fantasy(content=validtnt.Text()))
@@ -120,10 +112,8 @@ class TestLeaves(unittest.TestCase):
     def test_fantasy(self):
         """Test the Fantasy class"""
         premise = validtnt.Formula(arg1=a, arg2=b)
-        premise = validtnt.Wrapper(arg=premise)
         premise = validtnt.Statement(formula=premise, rule=validtnt.TNTRule.PREMISE)
         outcome = validtnt.Formula(arg1=b, arg2=a)
-        outcome = validtnt.Wrapper(arg=outcome)
         outcome = validtnt.Statement(formula=outcome, rule=validtnt.TNTRule.SYMMETRY)
         text = validtnt.Text([(1, premise), (2, outcome)])
         fantasy = validtnt.Fantasy(content=text)
@@ -136,6 +126,21 @@ class TestParser(unittest.TestCase):
     """Test the parser itself"""
 
     parser = validtnt.TNTParser()
+
+    def test_recurse_vars(self):
+        """Test quantified/free tracking"""
+        aeqb = validtnt.Formula(arg1=a, arg2=b)
+        notaeqb = validtnt.Negated(arg=aeqb)
+        allaeqb = validtnt.Quantified(arg=aeqb, variable=a,
+                                      quantifier=validtnt.Quantifier.ALL)
+        notandall = validtnt.Compound(arg1=notaeqb, arg2=allaeqb,
+                                      operator=validtnt.Logic.AND)
+        quantified = {}
+        free = set()
+        recurse_vars(notandall, quantified, free)
+        self.assertIs(quantified.get(a, None), validtnt.Quantifier.ALL,
+                      "variable a should be quantified ALL")
+        self.assertIn(b, free, "variable b should be free")
 
     def test_whitespace(self):
         """Test skipping whitespace"""
@@ -296,12 +301,10 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(stmt, validtnt.Statement, "you had one job")
         assert isinstance(stmt, validtnt.Statement)
         self.assertEqual(stmt.lineno, 0, "wrong line number")
-        self.assertIsInstance(stmt.formula, validtnt.Wrapper,
-                              "all formulas must be wrapped")
-        assert isinstance(stmt.formula, validtnt.Wrapper)
-        self.assertIsInstance(stmt.formula.arg, validtnt.Formula)
-        self.assertIs(stmt.formula.arg.arg1, a)
-        self.assertIs(stmt.formula.arg.arg2, b)
+        self.assertIsInstance(stmt.formula, validtnt.Formula)
+        assert isinstance(stmt.formula, validtnt.Formula)
+        self.assertIs(stmt.formula.arg1, a)
+        self.assertIs(stmt.formula.arg2, b)
         self.assertIs(stmt.rule, validtnt.TNTRule.PREMISE)
         self.assertFalse(bool(stmt.referrals))
 
@@ -394,11 +397,9 @@ class TestRunner(unittest.TestCase):
                                     b=a symmetry''')
         assert runner.text is not None
         def _cmp(ln: validtnt.Statement, st: validtnt.Statement) -> bool:
-            assert isinstance(ln.formula, validtnt.Wrapper)
-            assert isinstance(st.formula, validtnt.Wrapper)
             return (
-                ln.formula.arg.arg1 is st.formula.arg.arg2
-                and ln.formula.arg.arg2 is st.formula.arg.arg1
+                ln.formula.arg1 is st.formula.arg2
+                and ln.formula.arg2 is st.formula.arg1
             )
         line = runner.find_arg(1, runner.text[1], _cmp, 'none', 'none')
         self.assertIsInstance(line, validtnt.Statement, 'uh oh stinky')

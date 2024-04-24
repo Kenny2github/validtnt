@@ -1,13 +1,13 @@
 """
 Validate TNT.
 """
-#pylint: skip-file
+from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 from typing import Union, Optional
-from .parser import TNTParser
-from .leaves import Text, Fantasy, Statement, Logic, Compound, FantasyMarker, \
-     Quantifier
+from .parser import TNTParser, recurse_vars
+from .leaves import Formula, Negated, Quantified, Text, Fantasy, Statement, \
+    Logic, Compound, FantasyMarker, Quantifier, Variable
 
 __all__ = ['TNTRunner', 'ProofMistake', 'InvalidRule', 'NotARule',
            'InvalidReferral', 'TooManyReferrals', 'MissingArgument',
@@ -79,6 +79,8 @@ class TNTRunner:
     """)
 
     text: Text
+    quantified: dict[Statement, dict[Variable, Quantifier]]
+    free_vars: dict[Statement, set[Variable]]
 
     def __init__(self, text: str | Text):
         """Initialize the runner with text to validate.
@@ -88,6 +90,12 @@ class TNTRunner:
         if isinstance(text, str):
             text = TNTParser().parse(text)
         self.text = text
+        self.quantified = {}
+        self.free_vars = {}
+        for line in self.text.vals:
+            self.quantified[line] = {}
+            self.free_vars[line] = set()
+            recurse_vars(line.formula, self.quantified[line], self.free_vars[line])
 
     def validate(self) -> None:
         """Validates the OrderedDict of line numbers to TNT statements.
@@ -202,11 +210,11 @@ class TNTRunner:
     def rule_joining(self, idx: int, line: Statement) -> None:
         """If ``x`` and ``y`` are theorems, then ``<x∧y>`` is a theorem."""
         # first off it has to be an and
-        if not isinstance(line.formula.arg, Compound) \
-               or line.formula.arg.operator is not Logic.AND:
+        if not isinstance(line.formula, Compound) \
+                or line.formula.operator is not Logic.AND:
             raise InvalidRule('joining formula is not an AND formula')
         arg1 = arg2 = False
-        formula = line.formula.arg
+        formula = line.formula
         self.at_most_refs(line, 2, 'joining')
         if len(line.referrals) >= 1:
             form = self.text[line.referrals[0]].formula
@@ -272,11 +280,13 @@ class TNTRunner:
         """If ``<x∧y>`` is a theorem, then both ``x`` and ``y`` are theorems."""
         arg = None
         self.at_most_refs(line, 1, 'separation')
-        arg = self.get_arg(idx, line).formula.arg
+        arg = self.get_arg(idx, line).formula
+        if not isinstance(arg, Formula) or not isinstance(line.formula, Formula):
+            raise InvalidRule('did you mean push/pop?')
         if not isinstance(arg, Compound) \
                 or arg.operator is not Logic.AND:
             raise InvalidReferral('referral is not an AND formula')
-        if line.formula.arg not in (arg.arg1, arg.arg2):
+        if line.formula not in (arg.arg1, arg.arg2):
             raise InvalidReferral('referral does not have formula as operand')
 
     def rule_double_tilde(self, idx: int, line: Statement) -> None:
@@ -303,10 +313,10 @@ class TNTRunner:
                                   'directly after fantasy')
         if arg.fantasy is None or arg.fantasy.fantasy is not line.fantasy:
             raise InvalidRule('did you mean premise?')
-        if arg.fantasy.premise.formula != line.formula.arg.arg1:
+        if arg.fantasy.premise.formula != line.formula.arg1:
             raise InvalidFantasy('premise of fantasy does not match '
                                  'condition of IMPLIES formula')
-        if arg.fantasy.outcome.formula != line.formula.arg.arg2:
+        if arg.fantasy.outcome.formula != line.formula.arg2:
             raise InvalidFantasy('outcome of fantasy does not match '
                                  'result of IMPLIES formula')
 
@@ -328,13 +338,13 @@ class TNTRunner:
     def rule_detachment(self, idx: int, line: Statement) -> None:
         """If ``x`` and ``<x⊃y>`` are both theorems, then ``y`` is a theorem."""
         cond = expr = None
-        formula = line.formula.arg
+        formula = line.formula
         self.at_most_refs(line, 2, 'detachment')
         if len(line.referrals) >= 1:
             form = self.text[line.referrals[0]].formula
-            if isinstance(form.arg, Compound) \
-                   and form.arg.operator is Logic.IMPLIES \
-                   and form.arg.arg2 == formula:
+            if isinstance(form, Compound) \
+                   and form.operator is Logic.IMPLIES \
+                   and form.arg2 == formula:
                 expr = self.text[line.referrals[0]]
             else:
                 cond = self.text[line.referrals[0]] # assume it's the condition
@@ -342,27 +352,27 @@ class TNTRunner:
             form = self.text[line.referrals[1]].formula
             if (
                     not expr
-                    and isinstance(form.arg, Compound)
-                    and form.arg.operator is Logic.IMPLIES
-                    and form.arg.arg2 == formula
+                    and isinstance(form, Compound)
+                    and form.operator is Logic.IMPLIES
+                    and form.arg2 == formula
                     # cond is already found, check it
-                    and form.arg.arg1 == self.text[line.referrals[0]].formula
+                    and form.arg1 == self.text[line.referrals[0]].formula
             ):
                 expr = self.text[line.referrals[1]]
             elif not cond and form == self.text[line.referrals[0]] \
-                     .formula.arg.arg1:
+                     .formula.arg1:
                 cond = self.text[line.referrals[1]]
             else:
                 raise InvalidReferral('invalid detachment')
         if not expr:
             expr = self.find_arg(idx, line, lambda line, stmt: (
-                isinstance(stmt.formula.arg, Compound)
-                and stmt.formula.arg.operator is Logic.IMPLIES
-                and stmt.formula.arg.arg2 == line.formula
+                isinstance(stmt.formula, Compound)
+                and stmt.formula.operator is Logic.IMPLIES
+                and stmt.formula.arg2 == line.formula
             ), 'detachment', 'formula to detach from')
         if not cond:
             cond = self.find_arg(idx, line, lambda line, stmt: (
-                stmt.formula == expr.formula.arg.arg1
+                stmt.formula == expr.formula.arg1
             ), 'detachment', 'condition to detach upon')
 
     # BIG TODO:
@@ -382,12 +392,12 @@ class TNTRunner:
         self.at_most_refs(line, 1, 'specification')
         def referral_matches(line: Statement, arg: Statement) -> bool:
             # find variables quantified in arg but not in line
-            spec = set(arg.formula.quantified) - set(line.formula.quantified)
+            spec = set(self.quantified[arg].keys() - self.quantified[line].keys())
             if len(spec) != 1:
                 raise InvalidReferral('cannot specify multiple variables '
                                       'simultaneously')
             spec = spec.pop()
-            if arg.formula.quantified[spec] != Quantifier.ALL:
+            if self.quantified[arg][spec] != Quantifier.ALL:
                 raise InvalidReferral('cannot specify existence quantifier')
             prev = str(arg.formula)
             after = str(line.formula)
@@ -424,7 +434,7 @@ class TNTRunner:
             if len(possibilities) != 1:
                 raise InvalidReferral('ambiguous specification')
             repl = possibilities.pop()
-            for var in line.formula.quantified:
+            for var in self.quantified[line].keys():
                 if str(var) in repl:
                     raise SpecifyingQuantifiedVariable(
                         'the term which replaces the specified variable '
@@ -449,12 +459,12 @@ class TNTRunner:
         self.at_most_refs(line, 1, 'generalization')
         def referral_matches(line: Statement, arg: Statement) -> bool:
             # find variables quantified in line but not in arg
-            gen = set(line.formula.quantified) - set(arg.formula.quantified)
+            gen = set(self.quantified[line].keys() - self.quantified[arg].keys())
             if len(gen) != 1:
                 raise InvalidReferral('cannot generalize multiple variables '
                                       'simultaneously')
             gen = gen.pop()
-            if line.formula.quantified[gen] != Quantifier.ALL:
+            if self.quantified[line][gen] != Quantifier.ALL:
                 raise InvalidReferral('cannot generalize existence quantifier')
             prev = str(arg.formula)
             after = str(line.formula)
@@ -479,7 +489,7 @@ class TNTRunner:
                         raise RuntimeError('how did you do this?')
                     if line.fantasy is not None:
                         premise = line.fantasy.premise
-                        if gen in premise.formula.free:
+                        if gen in self.free_vars[premise]:
                             raise GeneralizingFantasyVariable(
                                 'no generalization is allowed in a fantasy on '
                                 'any variable which appeared free in the '
@@ -534,12 +544,12 @@ class TNTRunner:
             # find variables quantified in line but not in arg
             # this is very similar to specification and generalization,
             # but has elements of both and neither
-            exist = set(line.formula.quantified) - set(arg.formula.quantified)
+            exist = set(self.quantified[line].keys() - self.quantified[arg].keys())
             if len(exist) != 1:
                 raise InvalidReferral('cannot assert existence of multiple '
                                       'variables simultaneously')
             exist = exist.pop()
-            if line.formula.quantified[exist] != Quantifier.EXISTS:
+            if self.quantified[line][exist] != Quantifier.EXISTS:
                 raise InvalidReferral('cannot assert existence with '
                                       'general quantifier')
             prev = str(arg.formula)
@@ -572,7 +582,7 @@ class TNTRunner:
                                               'other than the new variable')
                     if not TERM.search(repled):
                         raise InvalidReferral('only terms can be replaced')
-                    for q in arg.formula.quantified:
+                    for q in self.quantified[arg]:
                         if str(q) in repled:
                             raise InvalidReferral('the term being replaced '
                                                   'must not contain a '
@@ -638,17 +648,17 @@ class TNTRunner:
     def rule_push(self, idx: int, line: Statement) -> None:
         """Create a fantasy."""
         self.at_most_refs(line, 0, 'push')
-        if not isinstance(line.formula.arg, FantasyMarker):
+        if not isinstance(line.formula, FantasyMarker):
             raise InvalidRule('cannot use push on actual formula')
-        if line.formula.arg.rule != line.rule:
+        if line.formula.rule != line.rule:
             raise InvalidRule('push rule used on pop statement')
 
     def rule_pop(self, idx: int, line: Statement) -> None:
         """Leave a fantasy."""
         self.at_most_refs(line, 0, 'pop')
-        if not isinstance(line.formula.arg, FantasyMarker):
+        if not isinstance(line.formula, FantasyMarker):
             raise InvalidRule('cannot use pop on actual formula')
-        if line.formula.arg.rule != line.rule:
+        if line.formula.rule != line.rule:
             raise InvalidRule('pop rule used on push statement')
         if self.text.vals[idx+1].rule.value != 'fantasy rule':
             raise InvalidFantasy('fantasy was not followed by conclusion')
