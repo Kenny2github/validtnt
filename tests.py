@@ -347,7 +347,7 @@ class TestRunner(unittest.TestCase):
 
     def test_find_fantasy(self):
         """Test finding a fantasy in its ancestors"""
-        runner = validtnt.TNTRunner()
+        runner = validtnt.TNTRunner('')
         stmt = self.parser.parse_line(0, 'a=b premise')
         assert stmt is not None
         stmt.fantasy = validtnt.Fantasy(
@@ -410,7 +410,7 @@ class TestRunner(unittest.TestCase):
 
     def test_at_most_refs(self):
         """Test checking for too many referrals"""
-        runner = validtnt.TNTRunner()
+        runner = validtnt.TNTRunner('')
         line = self.parser.parse_line(0, 'a=b premise')
         assert line is not None
         self.assertIsNone(runner.at_most_refs(line, 2, 'none'))

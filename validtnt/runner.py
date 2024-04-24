@@ -78,31 +78,24 @@ class TNTRunner:
     5 Aa:Ab:(a*Sb)=((a*b)+a)  axiom 5
     """)
 
-    text = None
+    text: Text
 
-    def __init__(self, text: Union[str, Text, None] = None):
-        """Initialize the runner, optionally with text to validate.
+    def __init__(self, text: str | Text):
+        """Initialize the runner with text to validate.
         (If not a string, it must be an OrderedDict, ideally straight
         out of the parser.)
         """
         if isinstance(text, str):
             text = TNTParser().parse(text)
-        if text is not None:
-            self.text = text
+        self.text = text
 
-    def validate(self, text: Union[str, Text, None] = None) -> None:
+    def validate(self) -> None:
         """Validates the OrderedDict of line numbers to TNT statements.
         If no issues, returns None.
         Otherwise, raises an exception tailored to the rule.
-        ``text`` can be set at initialization or passed at call.
         """
-        text = text or self.text
-        if isinstance(text, str):
-            text = TNTParser().parse(text)
-        if text is not None:
-            self.text = text
         try:
-            for i, (lineno, line) in enumerate(text.items()):
+            for i, (lineno, line) in enumerate(self.text.items()):
                 getattr(self, 'rule_' + line.rule.value\
                         .lower().replace(' ', '_').replace('-', '_'),
                         self.rule_invalid)(i, line)
