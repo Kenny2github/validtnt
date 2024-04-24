@@ -369,9 +369,6 @@ class TestRunner(unittest.TestCase):
                                     ] pop
                                     <b=a]a=b> fantasy rule''')
         assert runner.text is not None
-        assert runner.text.vals[-1].fantasy is not None
-        assert runner.text[2].fantasy is not None
-        assert runner.text[3].fantasy is not None
         self.assertTrue(runner.raise_fantasy(2, runner.text.vals[-1].fantasy,
                                              'none', 'none'),
                         "Statement from inner fantasy should be skipped")

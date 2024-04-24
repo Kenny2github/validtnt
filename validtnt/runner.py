@@ -4,9 +4,9 @@ Validate TNT.
 from __future__ import annotations
 import re
 from difflib import SequenceMatcher
-from typing import Union, Optional
+from typing import Callable
 from .parser import TNTParser, recurse_vars
-from .leaves import Formula, Negated, Quantified, Text, Fantasy, Statement, \
+from .leaves import Formula, Text, Fantasy, Statement, \
     Logic, Compound, FantasyMarker, Quantifier, Variable
 
 __all__ = ['TNTRunner', 'ProofMistake', 'InvalidRule', 'NotARule',
@@ -111,7 +111,7 @@ class TNTRunner:
             exc.args = (f"line {line.lineno}: '{str(line)}' " + exc.args[0], *exc.args[1:])
             raise
 
-    def find_fantasy(self, fantasy: Fantasy, obj: Union[Statement, Fantasy]) -> bool:
+    def find_fantasy(self, fantasy: Fantasy | None, obj: Statement | Fantasy) -> bool:
         """Returns True if ``obj`` has any parent Fantasy ``fantasy``."""
         if fantasy is None:
             return True # all objects have top level as parent
@@ -122,7 +122,7 @@ class TNTRunner:
                 return True
         return False
 
-    def raise_fantasy(self, idx: int, fantasy: Fantasy, rule: str, arg: str) -> bool:
+    def raise_fantasy(self, idx: int, fantasy: Fantasy | None, rule: str, arg: str) -> bool:
         """Returns True if the loop should continue, False if no action is needed.
         Raises MissingArgument with ``rule`` and ``arg`` in the exception message
         if the fantasy ends prematurely.
@@ -163,17 +163,15 @@ class TNTRunner:
                                    f'at most {count}, got {len(line.referrals)}')
 
     def find_arg(self, idx: int, line: Statement,
-                 cmp: type(lambda: None),
+                 cmp: Callable[[Statement, Statement], bool],
                  rule: str, argname: str) -> Statement:
         """Find an argument that matches the cmp function.
         cmp takes two arguments: the ``line`` passed into this function
         and a Statement being compared with it.
         If it returns True, that is the statement that is returned.
         """
-        i = idx
         fantasy = line.fantasy
-        while i > 0:
-            i -= 1
+        for i in range(idx - 1, -1, -1):
             # if True, text.vals[i] is in an inner fantasy than line,
             # and can't be derived from. Skip it.
             # if False, text.vals[i] is in the same fantasy. Check it.
@@ -185,8 +183,7 @@ class TNTRunner:
                     return self.text.vals[i]
             except ProofMistake:
                 continue
-        if i <= 0:
-            raise MissingArgument(rule + ' missing corresponding ' + argname)
+        raise MissingArgument(rule + ' missing corresponding ' + argname)
 
     def get_arg(self, idx: int, line: Statement) -> Statement:
         """Get the direct or indirect referral and raise if it's missing."""
@@ -666,6 +663,8 @@ class TNTRunner:
     def rule_premise(self, idx: int, line: Statement) -> None:
         """The first statement in a fantasy is assumed true as the premise."""
         self.at_most_refs(line, 0, 'premise')
+        if line.fantasy is None:
+            raise InvalidFantasy('no fantasy of which to be the premise')
         if line.fantasy.premise is not line:
             raise InvalidRule('this line is not the premise, this one is: '
                               + str(line.fantasy.premise))
