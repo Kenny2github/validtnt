@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import OrderedDict
-from typing import Optional, Union, Set, get_type_hints
 
 __all__ = ['std', 'Quantifier', 'Logic', 'Operator', 'Rule',
            'PropositionalRule', 'TNTRule', 'FantasyRule', 'Rules',
@@ -89,7 +88,7 @@ class FantasyRule(Rule):
     PUSH = 'push'
     POP = 'pop'
 
-Rules = (PropositionalRule, TNTRule, FantasyRule)
+Rules = PropositionalRule | TNTRule | FantasyRule
 
 # Begin actual TNT syntax
 
@@ -227,11 +226,11 @@ class Compound(Formula):
 
 def _recurse_vars(formula: Formula, quant: dict, free: set) -> None:
     """Compute which variables are quantified by recursing into each argument."""
-    if hasattr(formula, 'arg'):
+    if isinstance(formula, (Negated, Quantified)):
         if isinstance(formula, Quantified):
             quant[formula.variable] = formula.quantifier
         _recurse_vars(formula.arg, quant, free)
-    elif hasattr(formula, 'arg1'):
+    elif isinstance(formula, Compound):
         _recurse_vars(formula.arg1, quant, free)
         _recurse_vars(formula.arg2, quant, free)
     elif isinstance(formula, Variable):
@@ -244,7 +243,7 @@ class Wrapper(Formula):
     arg1: None = field(default=None, init=False)
     arg2: None = field(default=None, init=False)
     arg: Formula
-    free: Set[Variable]
+    free: set[Variable]
     quantified: dict # Variable: Quantifier
 
     def __init__(self, *, arg: Formula):
@@ -288,11 +287,11 @@ class Statement:
        specification is stored as the first (and only) referral.)
     Separated by spaces.
     """
-    formula: Union[Wrapper, FantasyMarker]
+    formula: Wrapper | FantasyMarker
     rule: Rule
-    lineno: Optional[int] = None
+    lineno: int | None = None
     referrals: list = field(default_factory=list)
-    fantasy: Optional[Fantasy] = None
+    fantasy: Fantasy | None = None
     def __str__(self):
         result = ''
         # line number
@@ -322,9 +321,9 @@ class Statement:
             result += ' (line ' + ', '.join(map(str, refs)) + ')'
         return result
 
-class Text(OrderedDict):
+class Text(OrderedDict[int, Statement]):
     """Mapping of line numbers to TNT statements."""
-    vals: list = []
+    vals: list[Statement] = []
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.flash()
@@ -364,8 +363,8 @@ class Fantasy:
         # always last statement, no special rule for it
         return list(self.content.values())[-1]
     content: Text
-    fantasy: Optional[Fantasy] = None # fantasy can be inside a fantasy
-    lineno: Optional[int] = None
+    fantasy: Fantasy | None = None # fantasy can be inside a fantasy
+    lineno: int | None = None
 
     def __str__(self):
         return str(self.content)

@@ -38,12 +38,8 @@ class TestLeaves(unittest.TestCase):
         self.assertEqual(str(zero), '0', "numeral should be zero")
         self.assertIs(zero, validtnt.Numeral(), "there is only one zero")
 
-        with self.assertRaises(TypeError, msg="letter should be str only"):
-            validtnt.Variable(letter=1)
         with self.assertRaises(ValueError, msg="letter should be abcde only"):
             validtnt.Variable(letter='x')
-        with self.assertRaises(TypeError, msg="primes should be int only"):
-            validtnt.Variable(letter='a', primes='1')
         vara = validtnt.Variable(letter='a')
         self.assertIsInstance(vara, validtnt.Term, "all variables are terms")
         self.assertEqual(str(vara), 'a', "this variable should be a")
@@ -55,10 +51,6 @@ class TestLeaves(unittest.TestCase):
         self.assertIs(aprime, validtnt.Variable(letter='a', primes=2),
                       "each possible variable should be a singleton")
 
-        with self.assertRaises(TypeError, msg="successors should be int only"):
-            validtnt.Successed(successors='1', arg=zero)
-        with self.assertRaises(TypeError, msg="arg should be term only"):
-            validtnt.Successed(successors=1, arg=0)
         S0 = validtnt.Successed(successors=1, arg=zero)
         self.assertIsInstance(S0, validtnt.Term, "``S``term is also a term")
         self.assertEqual(str(S0), 'S0', "wrong representation of S0")
@@ -68,8 +60,6 @@ class TestLeaves(unittest.TestCase):
                               "any term can follow any number of ``S``es")
         self.assertEqual(str(SSa), 'SSa', "wrong representation of SSa")
 
-        with self.assertRaises(TypeError, msg="args should be terms only"):
-            validtnt.MultiTerm(arg1='a', arg2=0, operator='+')
         aplusb = validtnt.MultiTerm(arg1=a, arg2=zero, operator=validtnt.Operator.ADD)
         self.assertIsInstance(aplusb, validtnt.Term, "multiterms are terms")
         self.assertEqual(str(aplusb), '(a+0)', "wrong representation of a+0")
@@ -79,27 +69,16 @@ class TestLeaves(unittest.TestCase):
 
     def test_formula(self):
         """Test Formula and its subclasses"""
-        with self.assertRaises(TypeError, msg="args should be Terms only"):
-            validtnt.Formula(arg1='a', arg2='b')
-        with self.assertRaises(TypeError, msg="args shouldn't be Formulas"):
-            validtnt.Formula(arg1=validtnt.Formula(arg1=a, arg2=b),
-                             arg2=validtnt.Formula(arg1=b, arg2=a))
         aeqb = validtnt.Formula(arg1=a, arg2=b)
         self.assertEqual(str(aeqb), 'a=b',
                          "wrong representation for formula of a and b")
 
-        with self.assertRaises(TypeError, msg="arg should be Formula only"):
-            validtnt.Negated(arg='a=b')
-        with self.assertRaises(TypeError, msg="arg shouldn't be Term"):
-            validtnt.Negated(arg=a)
         notaeqb = validtnt.Negated(arg=aeqb)
         self.assertIsInstance(notaeqb, validtnt.Formula,
                               "negated formula is formula")
         self.assertEqual(str(notaeqb), '~a=b',
                          "wrong representation for not a=b")
 
-        with self.assertRaises(TypeError, msg="this call should error"):
-            validtnt.Quantifier(arg='a=b', variable='a', quantifier='A')
         allaeqb = validtnt.Quantified(arg=aeqb, variable=a,
                                       quantifier=validtnt.Quantifier.ALL)
         self.assertIsInstance(allaeqb, validtnt.Formula,
@@ -107,8 +86,6 @@ class TestLeaves(unittest.TestCase):
         self.assertEqual(str(allaeqb), '\N{FOR ALL}a:a=b',
                          "wrong representation for all a=b")
 
-        with self.assertRaises(TypeError, msg="args should be Formulas only"):
-            validtnt.Compound(arg1=a, arg2=b, operator=validtnt.Operator.ADD)
         notandall = validtnt.Compound(arg1=notaeqb, arg2=allaeqb,
                                       operator=validtnt.Logic.AND)
         self.assertIsInstance(notandall, validtnt.Formula,
@@ -116,8 +93,6 @@ class TestLeaves(unittest.TestCase):
         self.assertEqual(str(notandall), '<~a=b\N{LOGICAL AND}\N{FOR ALL}a:a=b>',
                          "wrong representation for <~a=b&Aa:a=b>")
 
-        with self.assertRaises(TypeError, msg="arg should be Formula only"):
-            validtnt.Wrapper(arg=a)
         wrapped = validtnt.Wrapper(arg=notandall)
         self.assertIsInstance(wrapped, validtnt.Formula,
                               "wrapped formula is formula")
@@ -126,8 +101,6 @@ class TestLeaves(unittest.TestCase):
                       "variable a should be quantified ALL")
         self.assertIn(b, wrapped.free, "variable b should be free")
 
-        with self.assertRaises(TypeError, msg="rule should be FantasyRule only"):
-            validtnt.FantasyMarker(rule='push')
         push = validtnt.FantasyMarker(rule=validtnt.FantasyRule.PUSH)
         self.assertIsInstance(push, validtnt.Formula,
                               "fantasy marker is formula, technically")
@@ -138,21 +111,6 @@ class TestLeaves(unittest.TestCase):
         formula = validtnt.Formula(arg1=validtnt.Variable(letter='a'),
                                    arg2=validtnt.Variable(letter='b'))
         formula = validtnt.Wrapper(arg=formula)
-        with self.assertRaises(TypeError, msg="lineno should be int? only"):
-            validtnt.Statement(lineno='0', formula=formula,
-                               rule=validtnt.PropositionalRule.DETACHMENT)
-        with self.assertRaises(TypeError, msg="formula should be Formula only"):
-            validtnt.Statement(formula=formula.arg.arg1, rule=validtnt.TNTRule.ADD_S)
-        with self.assertRaises(TypeError, msg="rule should be Rule only"):
-            validtnt.Statement(formula=formula, rule='add S')
-        with self.assertRaises(TypeError, msg="referrals should be a list"):
-            validtnt.Statement(formula=formula, rule=validtnt.FantasyRule.PUSH,
-                               referrals='1, 2, 4')
-        with self.assertRaises(TypeError, msg="fantasy should be a fantasy"):
-            validtnt.Statement(formula=validtnt.FantasyMarker(
-                rule=validtnt.FantasyRule.PUSH),
-                               rule=validtnt.FantasyRule.PUSH,
-                               fantasy=validtnt.Text())
         stmt = validtnt.Statement(lineno=1, formula=formula,
                                   rule=validtnt.TNTRule.ADD_S, referrals=[104],
                                   fantasy=validtnt.Fantasy(content=validtnt.Text()))
@@ -171,12 +129,6 @@ class TestLeaves(unittest.TestCase):
         fantasy = validtnt.Fantasy(content=text)
         self.assertIs(fantasy.premise, premise, "wrong premise")
         self.assertIs(fantasy.outcome, outcome, "wrong outcome")
-        with self.assertRaises(TypeError, msg="content should be Text only"):
-            validtnt.Fantasy(content='a=b\tpremise\nb=a\tsymmetry')
-        with self.assertRaises(TypeError, msg="fantasy should be Fantasy only"):
-            validtnt.Fantasy(content=text, fantasy=text)
-        with self.assertRaises(TypeError, msg="lineno should be int? only"):
-            validtnt.Fantasy(content=text, lineno='0')
         self.assertEqual(str(fantasy), str(fantasy.content),
                          "stringified fantasy should be stringified content")
 
@@ -208,6 +160,7 @@ class TestParser(unittest.TestCase):
         end, term = self.parser.term(0, 'SS0')
         self.assertEqual(end, 3, "wrong length consumed")
         self.assertIsInstance(term, validtnt.Successed, "SS0 not Successed")
+        assert isinstance(term, validtnt.Successed)
         self.assertEqual(term.successors, 2, "wrong number of Ss")
         self.assertIs(term.arg, validtnt.Numeral(), "SS0 is SS of 0, not...")
 
@@ -221,6 +174,7 @@ class TestParser(unittest.TestCase):
         end, term = self.parser.term(0, '(0+0)')
         self.assertEqual(end, 5, "probably didn't consume ending parenthesis")
         self.assertIsInstance(term, validtnt.MultiTerm)
+        assert isinstance(term, validtnt.MultiTerm)
         self.assertIs(term.arg1, validtnt.Numeral(), "wrong argument")
         self.assertIs(term.arg2, validtnt.Numeral())
         self.assertEqual(term.operator, validtnt.Operator.ADD)
@@ -263,11 +217,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(end, 1, "forgot to consume")
         self.assertIsInstance(formula, validtnt.FantasyMarker,
                               "fantasy marker not parsed")
+        assert isinstance(formula, validtnt.FantasyMarker)
         self.assertIs(formula.rule, validtnt.FantasyRule.PUSH,
                       "probably swapped or something")
         end, formula = self.parser.formula(0, ']')
         self.assertEqual(end, 1)
         self.assertIsInstance(formula, validtnt.FantasyMarker)
+        assert isinstance(formula, validtnt.FantasyMarker)
         self.assertIs(formula.rule, validtnt.FantasyRule.POP)
 
     def test_atoms(self):
@@ -285,6 +241,7 @@ class TestParser(unittest.TestCase):
         end, formula = self.parser.formula(0, '~~a=b ')
         self.assertEqual(end, 5)
         self.assertIsInstance(formula, validtnt.Negated)
+        assert isinstance(formula, validtnt.Negated)
         self.assertEqual(formula.negations, 2, "possibly skipped one")
         self.assertIsInstance(formula.arg, validtnt.Formula)
         self.assertIs(formula.arg.arg1, a)
@@ -295,6 +252,7 @@ class TestParser(unittest.TestCase):
         end, formula = self.parser.formula(0, 'Aa:a=b ')
         self.assertEqual(end, 6)
         self.assertIsInstance(formula, validtnt.Quantified)
+        assert isinstance(formula, validtnt.Quantified)
         self.assertIs(formula.quantifier, validtnt.Quantifier.ALL)
         self.assertIs(formula.variable, a)
         self.assertIsInstance(formula.arg, validtnt.Formula)
@@ -316,6 +274,7 @@ class TestParser(unittest.TestCase):
         end, formula = self.parser.formula(0, '<a=b&b=a>')
         self.assertEqual(end, 9, "consume closing")
         self.assertIsInstance(formula, validtnt.Compound)
+        assert isinstance(formula, validtnt.Compound)
         self.assertIs(formula.operator, validtnt.Logic.AND)
         self.assertIsInstance(formula.arg1, validtnt.Formula)
         self.assertIsInstance(formula.arg2, validtnt.Formula)
@@ -333,19 +292,22 @@ class TestParser(unittest.TestCase):
         with self.assertRaises(AssertionError, msg="cut-off string should error"):
             self.parser.parse_line(0, 'a=')
 
-        stmt = self.parser.parse_line(None, '0 a=b premise')
+        stmt = self.parser.parse_line(1, '0 a=b premise')
         self.assertIsInstance(stmt, validtnt.Statement, "you had one job")
-        self.assertEqual(stmt.lineno, 0)
+        assert isinstance(stmt, validtnt.Statement)
+        self.assertEqual(stmt.lineno, 0, "wrong line number")
         self.assertIsInstance(stmt.formula, validtnt.Wrapper,
                               "all formulas must be wrapped")
+        assert isinstance(stmt.formula, validtnt.Wrapper)
         self.assertIsInstance(stmt.formula.arg, validtnt.Formula)
         self.assertIs(stmt.formula.arg.arg1, a)
         self.assertIs(stmt.formula.arg.arg2, b)
         self.assertIs(stmt.rule, validtnt.TNTRule.PREMISE)
         self.assertFalse(bool(stmt.referrals))
 
-        stmt = self.parser.parse_line(None, 'a=b premise (line 3, 4, 9)')
-        self.assertIsNone(stmt.lineno, "no line number should have been set")
+        stmt = self.parser.parse_line(-1, 'a=b premise (line 3, 4, 9)')
+        assert isinstance(stmt, validtnt.Statement)
+        self.assertEqual(stmt.lineno, -1, "no line number should have been set")
         self.assertIsInstance(stmt.referrals, list)
         self.assertListEqual(stmt.referrals, [3, 4, 9])
 
@@ -387,6 +349,7 @@ class TestRunner(unittest.TestCase):
         """Test finding a fantasy in its ancestors"""
         runner = validtnt.TNTRunner()
         stmt = self.parser.parse_line(0, 'a=b premise')
+        assert stmt is not None
         stmt.fantasy = validtnt.Fantasy(
             content=validtnt.Text([(stmt.lineno, stmt)]))
         stmt.fantasy.fantasy = validtnt.Fantasy(content=validtnt.Text())
@@ -402,6 +365,10 @@ class TestRunner(unittest.TestCase):
                                         a=b carry over line 0
                                     ] pop
                                     <b=a]a=b> fantasy rule''')
+        assert runner.text is not None
+        assert runner.text.vals[-1].fantasy is not None
+        assert runner.text[2].fantasy is not None
+        assert runner.text[3].fantasy is not None
         self.assertTrue(runner.raise_fantasy(2, runner.text.vals[-1].fantasy,
                                              'none', 'none'),
                         "Statement from inner fantasy should be skipped")
@@ -425,10 +392,15 @@ class TestRunner(unittest.TestCase):
         """Test finding an argument that passes a cmp test"""
         runner = validtnt.TNTRunner('''a=b premise
                                     b=a symmetry''')
-        line = runner.find_arg(1, runner.text[1], lambda ln, st: (
-            ln.formula.arg.arg1 is st.formula.arg.arg2
-            and ln.formula.arg.arg2 is st.formula.arg.arg1
-        ), 'none', 'none')
+        assert runner.text is not None
+        def _cmp(ln: validtnt.Statement, st: validtnt.Statement) -> bool:
+            assert isinstance(ln.formula, validtnt.Wrapper)
+            assert isinstance(st.formula, validtnt.Wrapper)
+            return (
+                ln.formula.arg.arg1 is st.formula.arg.arg2
+                and ln.formula.arg.arg2 is st.formula.arg.arg1
+            )
+        line = runner.find_arg(1, runner.text[1], _cmp, 'none', 'none')
         self.assertIsInstance(line, validtnt.Statement, 'uh oh stinky')
         self.assertEqual(str(line), '0 a=b\tpremise')
 
@@ -440,6 +412,7 @@ class TestRunner(unittest.TestCase):
         """Test checking for too many referrals"""
         runner = validtnt.TNTRunner()
         line = self.parser.parse_line(0, 'a=b premise')
+        assert line is not None
         self.assertIsNone(runner.at_most_refs(line, 2, 'none'))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="no raise?"):
@@ -449,10 +422,12 @@ class TestRunner(unittest.TestCase):
         """Test getting a direct or indirect referral"""
         runner = validtnt.TNTRunner('''a=b premise
                                     b=a symmetry''')
+        assert runner.text is not None
         self.assertIs(runner.get_arg(1, runner.text[1]), runner.text[0],
                       msg="indirect referral to previous line failed")
         runner = validtnt.TNTRunner('''a=b premise
                                     b=a symmetry (line 0)''')
+        assert runner.text is not None
         self.assertIs(runner.get_arg(1, runner.text[1]), runner.text[0])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="referral should not transcend fantasy"):
@@ -460,6 +435,7 @@ class TestRunner(unittest.TestCase):
                                         1 [ push
                                         2   a=c premise
                                         3 ] pop''')
+            assert runner.text is not None
             runner.get_arg(2, runner.text[2])
 
     def test_joining(self):
@@ -468,21 +444,25 @@ class TestRunner(unittest.TestCase):
                                     b=a premise
                                     <a=b&b=a> joining''')
         # if this fails, it will be an error
+        assert runner.text is not None
         self.assertIsNone(runner.rule_joining(2, runner.text[2]))
         with self.assertRaises(validtnt.InvalidRule,
                                msg="wrong operator should raise"):
             # this check should be performed first
             runner = validtnt.TNTRunner('''<a=b|b=a> joining''')
+            assert runner.text is not None
             runner.rule_joining(0, runner.text[0])
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="joining only allows 2 referrals"):
             runner = validtnt.TNTRunner('''<a=b&b=a> joining (lines 1,2,3)''')
+            assert runner.text is not None
             runner.rule_joining(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="directly wrong referral should raise"):
             runner = validtnt.TNTRunner('''a=b premise
                                         b=a premise
                                         <a=b&b=c> joining (lines 0, 1)''')
+            assert runner.text is not None
             runner.rule_joining(2, runner.text[2])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="indirectly referring prev wrongly raises"):
@@ -495,6 +475,7 @@ class TestRunner(unittest.TestCase):
                 4 d=c premise
                 5 <a=b&b=a> joining
             '''.strip())
+            assert runner.text is not None
             runner.rule_joining(4, runner.text[5])
         runner = validtnt.TNTRunner('''
             [ Direct and indirect referrals should be combinable. ]
@@ -503,41 +484,49 @@ class TestRunner(unittest.TestCase):
             3 b=a premise
             4 <a=b&b=a> joining (line 1)
         '''.strip())
+        assert runner.text is not None
         self.assertIsNone(runner.rule_joining(3, runner.text[4]))
 
     def test_separation(self):
         """Test the separation rule"""
         runner = validtnt.TNTRunner('''<a=b&b=a> premise
                                     a=b separation''')
+        assert runner.text is not None
         self.assertIsNone(runner.rule_separation(1, runner.text[1]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="separation only takes 1 ref"):
             runner = validtnt.TNTRunner('''a=b separation (lines 1,2)''')
+            assert runner.text is not None
             runner.rule_separation(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="wrong operator should raise"):
             runner = validtnt.TNTRunner('''<a=b|b=a> premise
                                         a=b separation''')
+            assert runner.text is not None
             runner.rule_separation(1, runner.text[1])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="wrong referral should raise"):
             runner = validtnt.TNTRunner('''<a=b&b=a> premise
                                         a=c separation''')
+            assert runner.text is not None
             runner.rule_separation(1, runner.text[1])
 
     def test_double_tilde(self):
         """Test the double-tilde rule"""
         runner = validtnt.TNTRunner('''~~<a=b&b=a> premise
                                     <a=b&~~b=a> double-tilde''')
+        assert runner.text is not None
         self.assertIsNone(runner.rule_double_tilde(1, runner.text[1]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="double-tilde only takes 1 ref"):
             runner = validtnt.TNTRunner('''a=b double-tilde (lines 1, 2)''')
+            assert runner.text is not None
             runner.rule_double_tilde(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="wrong referral should raise"):
             runner = validtnt.TNTRunner('''~~<a=b&b=a> premise
                                         ~<a=b&b=a> double-tilde''')
+            assert runner.text is not None
             runner.rule_double_tilde(1, runner.text[1])
 
     def test_fantasy_rule(self):
@@ -546,14 +535,17 @@ class TestRunner(unittest.TestCase):
                                     1     a=b premise
                                     2 ] pop
                                     3 <a=b]a=b> fantasy rule''')
+        assert runner.text is not None
         self.assertIsNone(runner.rule_fantasy_rule(3, runner.text[3]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="fantasy rule takes no refs"):
             runner = validtnt.TNTRunner('''a=b fantasy rule (line 1)''')
+            assert runner.text is not None
             runner.rule_fantasy_rule(0, runner.text[0])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="fantasy rule needs a fantasy"):
             runner = validtnt.TNTRunner('''a=b fantasy rule''')
+            assert runner.text is not None
             runner.rule_fantasy_rule(0, runner.text[0])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="fantasy rule should not search "
@@ -563,6 +555,7 @@ class TestRunner(unittest.TestCase):
                                         2 ] pop
                                         3 b=a symmetry
                                         4 <a=b]a=b> fantasy rule''')
+            assert runner.text is not None
             runner.rule_fantasy_rule(4, runner.text[4])
         with self.assertRaises(validtnt.InvalidRule,
                                msg="at least if I'm not mistaken, "
@@ -573,6 +566,7 @@ class TestRunner(unittest.TestCase):
             runner = validtnt.TNTRunner('''0 [ push
                                         1     a=b fantasy rule
                                         2 ] pop''')
+            assert runner.text is not None
             runner.rule_fantasy_rule(1, runner.text[1])
         with self.assertRaises(validtnt.InvalidFantasy,
                                msg="premise should match condition"):
@@ -580,6 +574,7 @@ class TestRunner(unittest.TestCase):
                                         1     a=b premise
                                         2 ] pop
                                         3 <a=c]a=b> fantasy rule''')
+            assert runner.text is not None
             runner.rule_fantasy_rule(3, runner.text[3])
         with self.assertRaises(validtnt.InvalidFantasy,
                                msg="outcome should match result"):
@@ -587,6 +582,7 @@ class TestRunner(unittest.TestCase):
                                         1     a=b premise
                                         2 ] pop
                                         3 <a=b]a=c> fantasy rule''')
+            assert runner.text is not None
             runner.rule_fantasy_rule(3, runner.text[3])
 
     def test_carry(self):
@@ -596,10 +592,12 @@ class TestRunner(unittest.TestCase):
                                     2     b=a premise
                                     3     a=b carry over line 0
                                     4 ] pop''')
+        assert runner.text is not None
         runner.rule_carry(3, runner.text[3])
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="carry takes one parser-given ref"):
             runner = validtnt.TNTRunner('''a=b carry over line 0 (line 1)''')
+            assert runner.text is not None
             runner.rule_carry(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="carry comes from direct parent"):
@@ -615,6 +613,7 @@ class TestRunner(unittest.TestCase):
                                         9     <a=b]a=b> fantasy rule
                                         10 ] pop
                                         11 <b=a]<a=b]a=b>> fantasy rule''')
+            assert runner.text is not None
             runner.rule_carry(7, runner.text[7])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="carry must be a copy"):
@@ -624,6 +623,7 @@ class TestRunner(unittest.TestCase):
                                         3     a=c carry over line 0
                                         4 ] pop
                                         5 <b=a]a=c> fantasy rule''')
+            assert runner.text is not None
             runner.rule_carry(3, runner.text[3])
 
 if __name__ == '__main__':

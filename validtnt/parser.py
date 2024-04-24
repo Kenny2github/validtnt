@@ -1,6 +1,6 @@
 """Contains the class that parses TNT text into usable objects."""
 import re
-from typing import Optional, Tuple, Union, Iterator
+from typing import Optional, Tuple, Iterator, get_args
 from .leaves import Statement, Formula, FantasyMarker, FantasyRule, \
      Negated, Quantifier, std, Quantified, Logic, Compound, Variable, \
      Term, Numeral, Operator, Successed, MultiTerm, Rules, Wrapper, \
@@ -75,13 +75,13 @@ class TNTParser:
                         content = fantasy.content
                 elif statement.rule is FantasyRule.POP:
                     raise AssertionError('popping from top level')
+                assert statement.lineno is not None, 'failed to parse line number'
+                content[statement.lineno] = statement
+                result[statement.lineno] = statement
                 if statement.rule is FantasyRule.PUSH:
                     fantasy = Fantasy(lineno=lineno,
                                       content=Text(),
                                       fantasy=fantasy)
-                content[statement.lineno] = statement
-                result[statement.lineno] = statement
-                if statement.rule is FantasyRule.PUSH:
                     content = fantasy.content
             if fantasy is not None:
                 raise AssertionError('unclosed fantasy started on line '
@@ -103,16 +103,16 @@ class TNTParser:
         if not text.strip():
             return None # effectively empty
         try:
-            start = self.whitespace(0, line)
+            start = self.whitespace(0, text)
             end = start
-            while line[end] in NUMBERS:
+            while text[end] in NUMBERS:
                 end += 1
             if end != start: # number present
-                num = int(line[start:end])
-                start = end = self.whitespace(end, line, True)
+                num = int(text[start:end])
+                start = end = self.whitespace(end, text, True)
             else:
                 num = lineno
-            if COMMENT.match(line, start):
+            if COMMENT.match(text, start):
                 return None
             start, formula = self.formula(start, text)
             start = end = self.whitespace(start, text, True)
@@ -226,7 +226,7 @@ class TNTParser:
             return start+1, MultiTerm(arg1=arg1, arg2=arg2, operator=op)
         raise AssertionError(f'column {start}: invalid syntax')
 
-    def rule(self, start: int, text: str) -> Tuple[int, Union[Rules], Optional[int]]:
+    def rule(self, start: int, text: str) -> Tuple[int, Rules, Optional[int]]:
         """Parse a rule. Last element is referral to add, if any"""
         match = RULES.match(text, start)
         assert match is not None, f'invalid rule: {text[start:]!r}'
@@ -234,7 +234,7 @@ class TNTParser:
         rul = match.group(0)
         if rul.startswith('carry'):
             rul = 'carry'
-        for r in Rules:
+        for r in get_args(Rules):
             try:
                 rul = r(rul)
             except ValueError:

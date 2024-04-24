@@ -24,9 +24,9 @@ setup(
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Software Development :: Interpreters',
         'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 3.7'
+        'Programming Language :: Python :: 3.10'
     ],
     keywords='tnt validator logic',
     packages=['validtnt'],
-    python_requires='>=3.7',
+    python_requires='>=3.10',
 )
