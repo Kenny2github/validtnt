@@ -24,14 +24,14 @@ QUANTIFIERS = set('AE∀∃')
 NUMBERS = set('0123456789')
 WHITESPACE = set('\t \n')
 
-RULES = re.compile('''(?xi)
-    joining | separation | double-tilde | fantasy\\ rule
-    | carry[- ]over(?:\\ of)?(?:\\ line)?\\ ([0-9]+) | detachment
-    | contrapositive | De\\ Morgan | switcheroo
+RULES = re.compile(r'''(?xi)
+    joining | separation | double-tilde | fantasy\ rule
+    | carry[-\ ]over(?:\ of)?(?:\ line)?\ ([0-9]+) | detachment
+    | contrapositive | De\ Morgan | switcheroo
     | specification | generalization | interchange
     | existence | symmetry | transitivity
-    | add\\ S | drop\\ S | induction
-    | axiom\\ ([1-5]) | premise | push | pop
+    | add\ S | drop\ S | induction
+    | axiom\ ([1-5]) | premise | push | pop
 ''')
 LINENOS = re.compile(r'(?:[0-9]+)(?:(?:, ?|,? and )(?:[0-9]+))*')
 COMMENT = re.compile(r'\[[^\n\]]+\]')
