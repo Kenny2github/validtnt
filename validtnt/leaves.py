@@ -2,6 +2,7 @@
 The leaves found on the parse tree.
 """
 from __future__ import annotations
+from dataclasses import dataclass, field
 from enum import Enum
 from collections import OrderedDict
 from typing import Optional, Union, Set, get_type_hints
@@ -90,54 +91,16 @@ class FantasyRule(Rule):
 
 Rules = (PropositionalRule, TNTRule, FantasyRule)
 
-def _dataclass(cls: type) -> type:
-    """Decorator to add kwarg-only __init__"""
-    def __init__(self, **kwargs):
-        cls = type(self)
-        d = get_type_hints(cls)
-        for var, typ in d.items():
-            if typ in (None, type(None)):
-                continue
-            if var not in kwargs and not hasattr(cls, var):
-                raise TypeError('__init__() missing required '
-                                f'keyword argument: {var!r}')
-            elif var not in kwargs:
-                kwargs[var] = getattr(cls, var)
-            if getattr(typ, '__origin__', None) is Union:
-                typ = typ.__args__
-            if typ is not None and not isinstance(kwargs[var], typ):
-                if isinstance(typ, tuple):
-                    name = ' or '.join(repr(t.__name__) for t in typ)
-                else:
-                    name = repr(typ.__name__)
-                raise TypeError(f'{var!r} is not {name!s}: {kwargs[var]!r}')
-            setattr(self, var, kwargs[var])
-    def __repr__(self):
-        ret = type(self).__name__
-        ret += '('
-        for k, v in self.__dict__.items():
-            ret += f'{k!s}={v!r}, '
-        if self.__dict__:
-            ret = ret[:-2]
-        ret += ')'
-        return ret
-    def __hash__(self):
-        return hash(str(self))
-    def __eq__(self, other):
-        return hash(self) == hash(other)
-    cls.__init__ = __init__
-    cls.__repr__ = __repr__
-    cls.__hash__ = __hash__
-    cls.__eq__ = __eq__
-    return cls
-
 # Begin actual TNT syntax
 
-@_dataclass
 class Term:
     """
     All Numerals and Variables are terms.
     """
+    def __hash__(self) -> int:
+        return hash(str(self))
+    def __eq__(self, value: object) -> bool:
+        return hash(self) == hash(value)
 
 class Numeral(Term):
     """
@@ -153,6 +116,7 @@ class Numeral(Term):
     def __str__(self):
         return '0'
 
+@dataclass(kw_only=False, eq=False)
 class Variable(Term):
     """
     ``a`` is a variable.
@@ -173,13 +137,15 @@ class Variable(Term):
     def __str__(self):
         return self.letter + '′' * self.primes
 
+@dataclass(kw_only=False, eq=False)
 class Successed(Term):
     """A term preceded by ``S`` is also a term."""
-    successors: int = 1
     arg: Term
+    successors: int = 1
     def __str__(self):
         return 'S' * self.successors + str(self.arg)
 
+@dataclass(kw_only=False, eq=False)
 class MultiTerm(Term):
     """If ``s`` and ``t`` are terms, then so are ``(s+t)`` and ``(s⋅t)``."""
     arg1: Term
@@ -195,7 +161,7 @@ class MultiTerm(Term):
 # The above rules tell how to make *parts* of well-formed formulas;
 # the following rules tell how to make *complete* well-formed formulas.
 
-@_dataclass
+@dataclass(kw_only=False, eq=False)
 class Formula:
     """
     If ``s`` and ``t`` are terms, then ``s=t`` is an atom.
@@ -204,18 +170,24 @@ class Formula:
     arg2: Term
     def __str__(self):
         return str(self.arg1) + '=' + str(self.arg2)
+    def __hash__(self) -> int:
+        return hash(str(self))
+    def __eq__(self, value: object) -> bool:
+        return hash(self) == hash(value)
 
+@dataclass(kw_only=False, eq=False)
 class Negated(Formula):
     """
     A well-formed formula preceded by a tilde is well-formed.
     """
-    negations: int = 1
     arg: Formula
-    arg1: None # de-registers arg1 as required arg
-    arg2: None
+    negations: int = 1
+    arg1: None = field(default=None, init=False)
+    arg2: None = field(default=None, init=False)
     def __str__(self):
         return '~' * self.negations + str(self.arg)
 
+@dataclass(kw_only=False, eq=False)
 class Quantified(Formula):
     """
     If ``u`` is a variable,
@@ -226,8 +198,8 @@ class Quantified(Formula):
     variable: Variable
     quantifier: Quantifier
     arg: Formula
-    arg1: None
-    arg2: None
+    arg1: None = field(default=None, init=False)
+    arg2: None = field(default=None, init=False)
     def __str__(self):
         return '{}{}:{}'.format(
             self.quantifier.value,
@@ -235,6 +207,7 @@ class Quantified(Formula):
             str(self.arg),
         )
 
+@dataclass(kw_only=False, eq=False)
 class Compound(Formula):
     """
     If ``x`` and ``y`` are well-formed formulas,
@@ -265,10 +238,11 @@ def _recurse_vars(formula: Formula, quant: dict, free: set) -> None:
         if formula not in quant:
             free.add(formula)
 
+@dataclass(kw_only=False, eq=False)
 class Wrapper(Formula):
     """Wrapper class to store variable quantification information."""
-    arg1: None
-    arg2: None
+    arg1: None = field(default=None, init=False)
+    arg2: None = field(default=None, init=False)
     arg: Formula
     free: Set[Variable]
     quantified: dict # Variable: Quantifier
@@ -285,11 +259,12 @@ class Wrapper(Formula):
     def __str__(self):
         return str(self.arg)
 
+@dataclass(kw_only=False, eq=False)
 class FantasyMarker(Formula):
     """Push or pop a fantasy."""
     rule: FantasyRule
-    arg1: None
-    arg2: None
+    arg1: None = field(default=None, init=False)
+    arg2: None = field(default=None, init=False)
     def __str__(self):
         if self.rule is FantasyRule.PUSH:
             return '['
@@ -298,7 +273,7 @@ class FantasyMarker(Formula):
 # The above rules tell how to make complete formulas in TNT;
 # the following rules will tell how to make complete statements.
 
-@_dataclass
+@dataclass(kw_only=False, eq=False)
 class Statement:
     """
     A statement consists of:
@@ -313,11 +288,11 @@ class Statement:
        specification is stored as the first (and only) referral.)
     Separated by spaces.
     """
-    lineno: Optional[int] = None
     formula: Union[Wrapper, FantasyMarker]
     rule: Rule
-    referrals: list = []
-    fantasy: Optional[Fantasy] = None #pylint: disable=used-before-assignment
+    lineno: Optional[int] = None
+    referrals: list = field(default_factory=list)
+    fantasy: Optional[Fantasy] = None
     def __str__(self):
         result = ''
         # line number
@@ -359,7 +334,7 @@ class Text(OrderedDict):
     def __str__(self):
         return '\n'.join(map(str, self.values()))
 
-@_dataclass
+@dataclass(kw_only=False, eq=False)
 class Fantasy:
     """
     A fantasy is a way of manufacturing theorems from nothing.
