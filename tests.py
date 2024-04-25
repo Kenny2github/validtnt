@@ -345,7 +345,9 @@ class TestParser(unittest.TestCase):
         self.assertIsNone(text[4].fantasy)
 
 class TestRunner(unittest.TestCase):
-    """Test the runner"""
+    """Test the runner. The "premise" rule is used to introduce arbitrary
+    theorems as true for use by unit tests.
+    """
 
     parser = validtnt.TNTParser()
 
