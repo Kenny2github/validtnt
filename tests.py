@@ -594,7 +594,7 @@ class TestRunner(unittest.TestCase):
                                     3     a=b carry over line 0
                                     4 ] pop''')
         assert runner.text is not None
-        runner.rule_carry(3, runner.text[3])
+        self.assertIsNone(runner.rule_carry(3, runner.text[3]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="carry takes one parser-given ref"):
             runner = validtnt.TNTRunner('''a=b carry over line 0 (line 1)''')
@@ -633,7 +633,7 @@ class TestRunner(unittest.TestCase):
                                     1 <a=b]b=a> premise
                                     2 b=a detachment''')
         assert runner.text is not None
-        runner.rule_detachment(2, runner.text[2])
+        self.assertIsNone(runner.rule_detachment(2, runner.text[2]))
 
 if __name__ == '__main__':
     import sys
