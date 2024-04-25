@@ -604,6 +604,42 @@ class TestRunner(unittest.TestCase):
                                     1 <a=b]b=a> premise
                                     2 b=a detachment''')
         self.assertIsNone(runner.rule_detachment(2, runner.text[2]))
+        with self.assertRaises(validtnt.InvalidRule,
+                               msg="wrong operator should raise"):
+            runner = validtnt.TNTRunner('''0 a=b premise
+                                        1 <a=b&b=a> premise
+                                        2 b=a detachment''')
+            runner.rule_detachment(2, runner.text[2])
+        with self.assertRaises(validtnt.TooManyReferrals,
+                               msg="detachment only allows 2 referrals"):
+            runner = validtnt.TNTRunner('''b=a detachment (lines 1,2,3)''')
+            runner.rule_detachment(0, runner.text[0])
+        with self.assertRaises(validtnt.InvalidReferral,
+                               msg="directly wrong referral should raise"):
+            runner = validtnt.TNTRunner('''0 a=b premise
+                                        1 <a=b]b=c> premise
+                                        2 b=a detachment (lines 0, 1)''')
+            runner.rule_detachment(2, runner.text[2])
+        with self.assertRaises(validtnt.MissingArgument,
+                               msg="indirectly referring prev wrongly raises"):
+            runner = validtnt.TNTRunner('''
+                [ Indirect referrals should not search infinitely far back. ]
+                [ They should only look at the directly previous couple. ]
+                1 a=b premise
+                2 <a=b]b=a> premise
+                3 c=d premise
+                4 <c=d]d=c> premise
+                5 b=a detachment
+            '''.strip())
+            runner.rule_detachment(4, runner.text[5])
+        runner = validtnt.TNTRunner('''
+            [ Direct and indirect referrals shoould be combinable. ]
+            1 a=b premise
+            2 c=d premise
+            3 <a=b]b=a> premise
+            4 b=a detachment (line 1)
+        '''.strip())
+        self.assertIsNone(runner.rule_detachment(3, runner.text[4]))
 
 if __name__ == '__main__':
     import sys
