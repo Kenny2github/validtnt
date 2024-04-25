@@ -625,6 +625,14 @@ class TestRunner(unittest.TestCase):
             assert runner.text is not None
             runner.rule_carry(3, runner.text[3])
 
+    def test_detachment(self):
+        """Test the detachment rule"""
+        runner = validtnt.TNTRunner('''0 a=b premise
+                                    1 <a=b]b=a> premise
+                                    2 b=a detachment''')
+        assert runner.text is not None
+        runner.rule_detachment(2, runner.text[2])
+
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1:
