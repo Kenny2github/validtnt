@@ -371,7 +371,6 @@ class TestRunner(unittest.TestCase):
                                         a=b carry over line 0
                                     ] pop
                                     <b=a]a=b> fantasy rule''')
-        assert runner.text is not None
         self.assertTrue(runner.raise_fantasy(2, runner.text.vals[-1].fantasy,
                                              'none', 'none'),
                         "Statement from inner fantasy should be skipped")
@@ -395,7 +394,6 @@ class TestRunner(unittest.TestCase):
         """Test finding an argument that passes a cmp test"""
         runner = validtnt.TNTRunner('''a=b premise
                                     b=a symmetry''')
-        assert runner.text is not None
         def _cmp(ln: validtnt.Statement, st: validtnt.Statement) -> bool:
             return (
                 ln.formula.arg1 is st.formula.arg2
@@ -423,12 +421,10 @@ class TestRunner(unittest.TestCase):
         """Test getting a direct or indirect referral"""
         runner = validtnt.TNTRunner('''a=b premise
                                     b=a symmetry''')
-        assert runner.text is not None
         self.assertIs(runner.get_arg(1, runner.text[1]), runner.text[0],
                       msg="indirect referral to previous line failed")
         runner = validtnt.TNTRunner('''a=b premise
                                     b=a symmetry (line 0)''')
-        assert runner.text is not None
         self.assertIs(runner.get_arg(1, runner.text[1]), runner.text[0])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="referral should not transcend fantasy"):
@@ -436,7 +432,6 @@ class TestRunner(unittest.TestCase):
                                         1 [ push
                                         2   a=c premise
                                         3 ] pop''')
-            assert runner.text is not None
             runner.get_arg(2, runner.text[2])
 
     def test_joining(self):
@@ -445,25 +440,21 @@ class TestRunner(unittest.TestCase):
                                     b=a premise
                                     <a=b&b=a> joining''')
         # if this fails, it will be an error
-        assert runner.text is not None
         self.assertIsNone(runner.rule_joining(2, runner.text[2]))
         with self.assertRaises(validtnt.InvalidRule,
                                msg="wrong operator should raise"):
             # this check should be performed first
             runner = validtnt.TNTRunner('''<a=b|b=a> joining''')
-            assert runner.text is not None
             runner.rule_joining(0, runner.text[0])
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="joining only allows 2 referrals"):
             runner = validtnt.TNTRunner('''<a=b&b=a> joining (lines 1,2,3)''')
-            assert runner.text is not None
             runner.rule_joining(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="directly wrong referral should raise"):
             runner = validtnt.TNTRunner('''a=b premise
                                         b=a premise
                                         <a=b&b=c> joining (lines 0, 1)''')
-            assert runner.text is not None
             runner.rule_joining(2, runner.text[2])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="indirectly referring prev wrongly raises"):
@@ -476,7 +467,6 @@ class TestRunner(unittest.TestCase):
                 4 d=c premise
                 5 <a=b&b=a> joining
             '''.strip())
-            assert runner.text is not None
             runner.rule_joining(4, runner.text[5])
         runner = validtnt.TNTRunner('''
             [ Direct and indirect referrals should be combinable. ]
@@ -485,49 +475,41 @@ class TestRunner(unittest.TestCase):
             3 b=a premise
             4 <a=b&b=a> joining (line 1)
         '''.strip())
-        assert runner.text is not None
         self.assertIsNone(runner.rule_joining(3, runner.text[4]))
 
     def test_separation(self):
         """Test the separation rule"""
         runner = validtnt.TNTRunner('''<a=b&b=a> premise
                                     a=b separation''')
-        assert runner.text is not None
         self.assertIsNone(runner.rule_separation(1, runner.text[1]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="separation only takes 1 ref"):
             runner = validtnt.TNTRunner('''a=b separation (lines 1,2)''')
-            assert runner.text is not None
             runner.rule_separation(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="wrong operator should raise"):
             runner = validtnt.TNTRunner('''<a=b|b=a> premise
                                         a=b separation''')
-            assert runner.text is not None
             runner.rule_separation(1, runner.text[1])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="wrong referral should raise"):
             runner = validtnt.TNTRunner('''<a=b&b=a> premise
                                         a=c separation''')
-            assert runner.text is not None
             runner.rule_separation(1, runner.text[1])
 
     def test_double_tilde(self):
         """Test the double-tilde rule"""
         runner = validtnt.TNTRunner('''~~<a=b&b=a> premise
                                     <a=b&~~b=a> double-tilde''')
-        assert runner.text is not None
         self.assertIsNone(runner.rule_double_tilde(1, runner.text[1]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="double-tilde only takes 1 ref"):
             runner = validtnt.TNTRunner('''a=b double-tilde (lines 1, 2)''')
-            assert runner.text is not None
             runner.rule_double_tilde(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="wrong referral should raise"):
             runner = validtnt.TNTRunner('''~~<a=b&b=a> premise
                                         ~<a=b&b=a> double-tilde''')
-            assert runner.text is not None
             runner.rule_double_tilde(1, runner.text[1])
 
     def test_fantasy_rule(self):
@@ -536,17 +518,14 @@ class TestRunner(unittest.TestCase):
                                     1     a=b premise
                                     2 ] pop
                                     3 <a=b]a=b> fantasy rule''')
-        assert runner.text is not None
         self.assertIsNone(runner.rule_fantasy_rule(3, runner.text[3]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="fantasy rule takes no refs"):
             runner = validtnt.TNTRunner('''a=b fantasy rule (line 1)''')
-            assert runner.text is not None
             runner.rule_fantasy_rule(0, runner.text[0])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="fantasy rule needs a fantasy"):
             runner = validtnt.TNTRunner('''a=b fantasy rule''')
-            assert runner.text is not None
             runner.rule_fantasy_rule(0, runner.text[0])
         with self.assertRaises(validtnt.MissingArgument,
                                msg="fantasy rule should not search "
@@ -556,7 +535,6 @@ class TestRunner(unittest.TestCase):
                                         2 ] pop
                                         3 b=a symmetry
                                         4 <a=b]a=b> fantasy rule''')
-            assert runner.text is not None
             runner.rule_fantasy_rule(4, runner.text[4])
         with self.assertRaises(validtnt.InvalidRule,
                                msg="at least if I'm not mistaken, "
@@ -567,7 +545,6 @@ class TestRunner(unittest.TestCase):
             runner = validtnt.TNTRunner('''0 [ push
                                         1     a=b fantasy rule
                                         2 ] pop''')
-            assert runner.text is not None
             runner.rule_fantasy_rule(1, runner.text[1])
         with self.assertRaises(validtnt.InvalidFantasy,
                                msg="premise should match condition"):
@@ -575,7 +552,6 @@ class TestRunner(unittest.TestCase):
                                         1     a=b premise
                                         2 ] pop
                                         3 <a=c]a=b> fantasy rule''')
-            assert runner.text is not None
             runner.rule_fantasy_rule(3, runner.text[3])
         with self.assertRaises(validtnt.InvalidFantasy,
                                msg="outcome should match result"):
@@ -583,7 +559,6 @@ class TestRunner(unittest.TestCase):
                                         1     a=b premise
                                         2 ] pop
                                         3 <a=b]a=c> fantasy rule''')
-            assert runner.text is not None
             runner.rule_fantasy_rule(3, runner.text[3])
 
     def test_carry(self):
@@ -593,12 +568,10 @@ class TestRunner(unittest.TestCase):
                                     2     b=a premise
                                     3     a=b carry over line 0
                                     4 ] pop''')
-        assert runner.text is not None
         self.assertIsNone(runner.rule_carry(3, runner.text[3]))
         with self.assertRaises(validtnt.TooManyReferrals,
                                msg="carry takes one parser-given ref"):
             runner = validtnt.TNTRunner('''a=b carry over line 0 (line 1)''')
-            assert runner.text is not None
             runner.rule_carry(0, runner.text[0])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="carry comes from direct parent"):
@@ -614,7 +587,6 @@ class TestRunner(unittest.TestCase):
                                         9     <a=b]a=b> fantasy rule
                                         10 ] pop
                                         11 <b=a]<a=b]a=b>> fantasy rule''')
-            assert runner.text is not None
             runner.rule_carry(7, runner.text[7])
         with self.assertRaises(validtnt.InvalidReferral,
                                msg="carry must be a copy"):
@@ -624,7 +596,6 @@ class TestRunner(unittest.TestCase):
                                         3     a=c carry over line 0
                                         4 ] pop
                                         5 <b=a]a=c> fantasy rule''')
-            assert runner.text is not None
             runner.rule_carry(3, runner.text[3])
 
     def test_detachment(self):
@@ -632,7 +603,6 @@ class TestRunner(unittest.TestCase):
         runner = validtnt.TNTRunner('''0 a=b premise
                                     1 <a=b]b=a> premise
                                     2 b=a detachment''')
-        assert runner.text is not None
         self.assertIsNone(runner.rule_detachment(2, runner.text[2]))
 
 if __name__ == '__main__':
